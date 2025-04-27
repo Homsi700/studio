@@ -1,4 +1,5 @@
 
+
 /**
  * Data structure representing the information needed to add a new tower.
  * Aligns with the form data in AddTowerDialog.
@@ -54,10 +55,12 @@ export async function addTower(towerData: TowerData): Promise<boolean> {
 // Add other tower management functions here (e.g., deleteTower, updateTower, restartTower, changeFrequency)
 
 // Example placeholder for restarting a tower:
-export async function restartTowerDevice(towerIp: string, towerType: 'Mimosa' | 'UBNT'): Promise<boolean> {
+export async function restartTowerDevice(towerIp: string, towerType: 'mimosa' | 'ubnt'): Promise<boolean> {
     console.log(`SERVICE: Attempting to restart ${towerType} tower ${towerIp}`);
      // TODO: Implement backend API call to trigger reboot command via respective API
     await new Promise(resolve => setTimeout(resolve, 1500));
     console.log(`SERVICE: Restart command sent to ${towerIp} (simulation).`);
     return true;
 }
+
+          

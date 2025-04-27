@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -5,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form"; // Import Controller
 import * as z from "zod";
 import { PlusCircle } from "lucide-react";
+import { format } from 'date-fns'; // Import date-fns for formatting
 
 import { Button } from "@/components/ui/button";
 import {
@@ -27,16 +29,17 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import type { Mikrotik, PppoeUser } from "@/services/mikrotik";
-import { addPppoeUser } from "@/services/mikrotik"; // Assuming this function handles API call
-// Removed import of MOCK_MIKROTIK_SERVERS as it will come from props
+import type { Mikrotik, PppoeUserPayload } from "@/services/mikrotik"; // Import PppoeUserPayload
+import { addPppoeUser } from "@/services/mikrotik"; // Import the actual service function
 
 const pppoeUserSchema = z.object({
   username: z.string().min(1, "Username is required"),
   password: z.string().min(1, "Password is required"),
   mikrotikServerName: z.string().min(1, "Server selection is required"),
   speed: z.string().min(1, "Speed is required (e.g., 10M/10M)"),
-  expiry: z.string().min(1, "Expiry date is required (e.g., YYYY-MM-DD)"),
+  expiry: z.string().refine((date) => !isNaN(Date.parse(date)), { // Validate date string
+    message: "Invalid expiry date format",
+  }),
   notes: z.string().optional(),
 });
 
@@ -46,7 +49,7 @@ interface AddUserDialogProps {
   mikrotikServers: Mikrotik[]; // Accept servers dynamically via props
 }
 
-export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) { // Use the passed prop
+export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) {
   const { toast } = useToast();
   const [isOpen, setIsOpen] = React.useState(false);
   const {
@@ -62,7 +65,7 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) { // Use 
         password: "",
         mikrotikServerName: "",
         speed: "",
-        expiry: "",
+        expiry: format(new Date(), 'yyyy-MM-dd'), // Default to today
         notes: "",
     }
   });
@@ -78,31 +81,40 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) { // Use 
       return;
     }
 
-    const newUser: PppoeUser = {
+    // Create the payload matching PppoeUserPayload
+    const newUserPayload: PppoeUserPayload = {
       username: data.username,
       password: data.password,
-      speed: data.speed,
-      expiry: data.expiry,
-      // notes are optional, not part of PppoeUser interface in services/mikrotik.ts
+      profile: data.speed, // Assuming speed corresponds to a profile name on Mikrotik
+      comment: data.notes || '', // Use notes as comment, default to empty string
+      // Expiry needs to be handled/formatted by the backend API call if necessary
+      // The 'expiry' field from the form (YYYY-MM-DD) is available in 'data.expiry'
+      // The backend addPppoeUser function should know how to use this.
     };
 
     try {
-      // TODO: Replace with actual API call using addPppoeUser
-      console.log("Submitting new user:", newUser, "to server:", selectedServer);
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API call
-      // await addPppoeUser(selectedServer, newUser);
+      // Use the actual API call
+      console.log("Submitting new user:", newUserPayload, "to server:", selectedServer, "with expiry:", data.expiry);
+      await addPppoeUser(selectedServer, newUserPayload, data.expiry); // Pass expiry separately if needed by API
 
       toast({
         title: "Success",
         description: `User ${data.username} added successfully to ${selectedServer.name}.`,
       });
-      reset(); // Reset form fields
+      reset({ // Reset form with default expiry
+         username: "",
+         password: "",
+         mikrotikServerName: data.mikrotikServerName, // Keep server selected maybe?
+         speed: "",
+         expiry: format(new Date(), 'yyyy-MM-dd'),
+         notes: "",
+      });
       setIsOpen(false); // Close dialog
     } catch (error) {
       console.error("Failed to add PPPoE user:", error);
       toast({
         title: "Error",
-        description: `Failed to add user ${data.username}. Please try again.`,
+        description: error instanceof Error ? error.message : `Failed to add user ${data.username}. Please check API logs.`,
         variant: "destructive",
       });
     }
@@ -111,7 +123,14 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) { // Use 
    // Function to reset form when dialog is closed
    const handleOpenChange = (open: boolean) => {
     if (!open) {
-      reset(); // Reset form when closing
+        reset({ // Ensure expiry is reset to default when closing without submitting
+            username: "",
+            password: "",
+            mikrotikServerName: "",
+            speed: "",
+            expiry: format(new Date(), 'yyyy-MM-dd'),
+            notes: "",
+        });
     }
     setIsOpen(open);
   };
@@ -133,6 +152,7 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) { // Use 
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="grid gap-4 py-4">
+            {/* Username */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="username" className="text-right">
                 Username
@@ -140,6 +160,7 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) { // Use 
               <Input id="username" {...register("username")} className="col-span-3" aria-invalid={errors.username ? "true" : "false"} />
               {errors.username && <p className="col-span-4 text-right text-xs text-destructive">{errors.username.message}</p>}
             </div>
+             {/* Password */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="password" className="text-right">
                 Password
@@ -147,6 +168,7 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) { // Use 
               <Input id="password" type="password" {...register("password")} className="col-span-3" aria-invalid={errors.password ? "true" : "false"}/>
                {errors.password && <p className="col-span-4 text-right text-xs text-destructive">{errors.password.message}</p>}
             </div>
+             {/* Server Selection */}
              <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="mikrotikServerName" className="text-right">
                 Server
@@ -176,13 +198,15 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) { // Use 
                 />
               {errors.mikrotikServerName && <p className="col-span-4 text-right text-xs text-destructive">{errors.mikrotikServerName.message}</p>}
             </div>
+            {/* Speed/Profile */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="speed" className="text-right">
-                Speed
+                Speed/Profile
               </Label>
-              <Input id="speed" placeholder="e.g., 10M/10M" {...register("speed")} className="col-span-3" aria-invalid={errors.speed ? "true" : "false"}/>
+              <Input id="speed" placeholder="e.g., 10M/10M or ProfileName" {...register("speed")} className="col-span-3" aria-invalid={errors.speed ? "true" : "false"}/>
                {errors.speed && <p className="col-span-4 text-right text-xs text-destructive">{errors.speed.message}</p>}
             </div>
+            {/* Expiry Date */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="expiry" className="text-right">
                 Expiry Date
@@ -190,6 +214,7 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) { // Use 
               <Input id="expiry" type="date" {...register("expiry")} className="col-span-3" aria-invalid={errors.expiry ? "true" : "false"}/>
                {errors.expiry && <p className="col-span-4 text-right text-xs text-destructive">{errors.expiry.message}</p>}
             </div>
+            {/* Notes/Comment */}
              <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="notes" className="text-right">
                 Notes
@@ -198,7 +223,7 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) { // Use 
             </div>
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || mikrotikServers.length === 0}>
               {isSubmitting ? "Saving..." : "Save User"}
             </Button>
           </DialogFooter>
@@ -207,3 +232,4 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) { // Use 
     </Dialog>
   );
 }
+

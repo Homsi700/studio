@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form"; // Import Controller
 import * as z from "zod";
 import { Server, PlusCircle } from "lucide-react";
 
@@ -19,19 +19,25 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; // Import Select components
 import { useToast } from "@/hooks/use-toast";
-import type { Mikrotik } from "@/services/mikrotik"; // Use existing Mikrotik type
+import type { Mikrotik } from "@/services/mikrotik";
 import { addServer } from "@/services/servers"; // Import placeholder addServer function
 
-// Schema based on original request details for adding a server
+// Updated schema to include server type and default speed
 const serverSchema = z.object({
   name: z.string().min(1, "Server name is required"),
   ipAddress: z.string().ip({ version: "v4", message: "Invalid IP address" }),
   username: z.string().min(1, "Admin username is required"),
   password: z.string().min(1, "Admin password is required"),
-  // Type and default speed are optional according to request
-  type: z.enum(["main", "sub"]).optional(),
-  defaultSpeed: z.string().optional(),
+  serverType: z.enum(["main", "sub"], { required_error: "Server type is required" }), // Made required
+  defaultSpeed: z.string().optional(), // Kept optional as per original, can be made required if needed
 });
 
 type ServerFormData = z.infer<typeof serverSchema>;
@@ -47,6 +53,7 @@ export function AddServerDialog({ onAddServer }: AddServerDialogProps) {
     register,
     handleSubmit,
     reset,
+    control, // Need control for Select
     formState: { errors, isSubmitting },
   } = useForm<ServerFormData>({
     resolver: zodResolver(serverSchema),
@@ -55,33 +62,40 @@ export function AddServerDialog({ onAddServer }: AddServerDialogProps) {
       ipAddress: "",
       username: "",
       password: "",
-      type: undefined, // Explicitly set optional fields if needed
+      serverType: undefined, // Explicitly set optional fields if needed
       defaultSpeed: "",
     }
   });
 
   const onSubmit = async (data: ServerFormData) => {
-    const newServer: Mikrotik = {
+    // Prepare the data for the service, including the new fields
+    const serverDataForApi = {
+        name: data.name,
+        ipAddress: data.ipAddress,
+        username: data.username,
+        password: data.password, // Handle securely in real implementation
+        type: data.serverType,
+        defaultSpeed: data.defaultSpeed
+    };
+
+     // Basic Mikrotik object structure for UI update
+    const newServerForUi: Mikrotik = {
       name: data.name,
       ipAddress: data.ipAddress,
-      // NOTE: In a real scenario, username/password would be stored securely
-      // and used for API calls, not directly in the Mikrotik object shown in UI.
-      // We are adding them here just to fulfill the form structure.
-      // Consider how you want to manage credentials.
     };
 
     try {
       // TODO: Replace with actual API call using addServer
-      console.log("Submitting new server:", data);
+      console.log("Submitting new server:", serverDataForApi);
       // Simulate checking connection and saving
-      const success = await addServer(data); // Pass full form data to service
+      const success = await addServer(serverDataForApi); // Pass full form data to service
 
       if (success) {
           toast({
               title: "Success",
               description: `Server ${data.name} added successfully.`,
           });
-          onAddServer(newServer); // Call the callback to update the parent state
+          onAddServer(newServerForUi); // Call the callback to update the parent state with UI data
           reset(); // Reset form fields
           setIsOpen(false); // Close dialog
       } else {
@@ -158,34 +172,40 @@ export function AddServerDialog({ onAddServer }: AddServerDialogProps) {
               {errors.password && <p className="col-span-4 text-right text-xs text-destructive">{errors.password.message}</p>}
             </div>
 
-             {/* Optional Fields - Type and Default Speed */}
-             {/* Example using Select for Type (optional) */}
-             {/*
+             {/* Server Type (Main/Sub) - Now Required */}
              <div className="grid grid-cols-4 items-center gap-4">
-               <Label htmlFor="type" className="text-right">
-                 Type
+               <Label htmlFor="serverType" className="text-right">
+                 Server Type
                </Label>
-               <Select onValueChange={(value) => control._formValues.type = value} name="type">
-                 <SelectTrigger className="col-span-3" id="type">
-                   <SelectValue placeholder="Select type (optional)" />
-                 </SelectTrigger>
-                 <SelectContent>
-                   <SelectItem value="main">Main</SelectItem>
-                   <SelectItem value="sub">Sub</SelectItem>
-                 </SelectContent>
-               </Select>
+               <Controller
+                  name="serverType"
+                  control={control}
+                  render={({ field }) => (
+                     <Select
+                       onValueChange={field.onChange}
+                       value={field.value}
+                       name={field.name}
+                     >
+                      <SelectTrigger className="col-span-3" id="serverType" aria-invalid={errors.serverType ? "true" : "false"}>
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="main">Main</SelectItem>
+                        <SelectItem value="sub">Sub</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+               {errors.serverType && <p className="col-span-4 text-right text-xs text-destructive">{errors.serverType.message}</p>}
              </div>
-             */}
 
-             {/* Example for Default Speed (optional) */}
-            {/*
+             {/* Default Speed (Optional) */}
             <div className="grid grid-cols-4 items-center gap-4">
                <Label htmlFor="defaultSpeed" className="text-right">
                  Default Speed
                </Label>
-               <Input id="defaultSpeed" placeholder="e.g., 10M/10M (optional)" {...register("defaultSpeed")} className="col-span-3" />
+               <Input id="defaultSpeed" placeholder="e.g., 10M/10M (Optional)" {...register("defaultSpeed")} className="col-span-3" />
              </div>
-            */}
 
           </div>
           <DialogFooter>

@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
 import { MOCK_MIKROTIK_SERVERS, MOCK_MIMOSA_TOWERS, MOCK_UBNT_TOWERS } from '@/lib/constants'; // Import mock data
 import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
+import { Card, CardContent, CardHeader } from '@/components/ui/card'; // Import Card components
+import { cn } from '@/lib/utils'; // Import the cn utility function
 
 // Define the combined device type
 type NetworkDevice =
@@ -27,48 +29,45 @@ export default function Dashboard() {
   const [loading, setLoading] = React.useState<boolean>(true); // Add loading state
 
   // Combine all devices into a single array for easier mapping
-  const allDevices: NetworkDevice[] = [
+  const allDevices: NetworkDevice[] = React.useMemo(() => [ // Use useMemo to prevent re-creation on every render
     ...MOCK_MIKROTIK_SERVERS.map((d) => ({ ...d, type: 'mikrotik' as const })),
     ...MOCK_MIMOSA_TOWERS.map((d) => ({ ...d, type: 'mimosa' as const })),
     ...MOCK_UBNT_TOWERS.map((d) => ({ ...d, type: 'ubnt' as const })),
-  ];
+  ], []); // Empty dependency array means this runs only once
+
 
   const fetchDeviceStatuses = React.useCallback(async () => {
     setLoading(true); // Set loading true at the start
     const newStatuses: Record<string, NetworkDeviceStatus> = {};
 
-    // Use Promise.all to fetch statuses concurrently
+    // Use Promise.allSettled to fetch statuses concurrently
     await Promise.allSettled(
       allDevices.map(async (device) => {
         const key = `${device.type}-${device.ipAddress}`; // Unique key for each device
         try {
           let status: NetworkDeviceStatus = { connected: false };
           if (device.type === 'mikrotik') {
-            // TODO: Replace with actual API calls
+            // Simulate API calls (Replace with actual API calls later)
             const isConnected = await checkMikrotikConnection(device);
-            // Simulate getting user count and speeds
             const users = isConnected ? Math.floor(Math.random() * 50) : 0;
             const downloadSpeed = isConnected ? `${(Math.random() * 100).toFixed(1)} Mbps` : '0 Mbps';
             const uploadSpeed = isConnected ? `${(Math.random() * 50).toFixed(1)} Mbps` : '0 Mbps';
             status = { connected: isConnected, users, downloadSpeed, uploadSpeed };
           } else if (device.type === 'mimosa') {
-            // TODO: Replace with actual API calls
-            // Simulate getting signal strength (Mimosa might have different API/range)
+             // Simulate API calls
              const signalStrength = await getMimosaSignalStrength(device);
-             // Simulate connection based on signal (adjust logic as needed)
-             const isConnected = signalStrength > -90; // Example: Assume disconnected if signal is very weak
+             const isConnected = signalStrength > -90; // Example threshold
              status = { connected: isConnected, signalStrength };
           } else if (device.type === 'ubnt') {
-             // TODO: Replace with actual API calls
+             // Simulate API calls
              const signalStrength = await getUbntSignalStrength(device);
-             const isConnected = signalStrength > -90;
+             const isConnected = signalStrength > -90; // Example threshold
              status = { connected: isConnected, signalStrength };
           }
            newStatuses[key] = status;
         } catch (error) {
           console.error(`Failed to fetch status for ${device.name} (${device.ipAddress}):`, error);
-          // Set status to disconnected on error
-          newStatuses[key] = { connected: false };
+          newStatuses[key] = { connected: false }; // Set status to disconnected on error
         }
       })
     );
@@ -91,49 +90,15 @@ export default function Dashboard() {
     // Placeholder for WebSocket connection setup
     // const ws = new WebSocket('ws://your-backend-websocket-url');
 
-    // ws.onopen = () => {
-    //   console.log('WebSocket connected');
-    // };
+    // ws.onopen = () => { console.log('WebSocket connected'); };
+    // ws.onmessage = (event) => { /* Handle updates */ };
+    // ws.onerror = (error) => { console.error('WebSocket error:', error); };
+    // ws.onclose = () => { console.log('WebSocket disconnected'); };
+    // return () => { ws.close(); }; // Cleanup
 
-    // ws.onmessage = (event) => {
-    //   try {
-    //     const update = JSON.parse(event.data);
-    //     // Example: { type: 'status_update', deviceIp: '192.168.1.20', status: { connected: true, signalStrength: -65 } }
-    //     if (update.type === 'status_update' && update.deviceIp) {
-    //        const device = allDevices.find(d => d.ipAddress === update.deviceIp);
-    //        if(device) {
-    //          const key = `${device.type}-${device.ipAddress}`;
-    //          setDeviceStatuses((prevStatuses) => ({
-    //            ...prevStatuses,
-    //            [key]: { ...prevStatuses[key], ...update.status }, // Merge updates
-    //          }));
-    //        }
-    //     }
-    //     // Handle other message types (e.g., alerts)
-    //      else if (update.type === 'alert') {
-    //         // Example: { type: 'alert', message: 'Tower A signal weak!', level: 'warning' }
-    //         // toast({ title: update.level, description: update.message, variant: update.level === 'error' ? 'destructive' : 'default' });
-    //      }
-    //   } catch (e) {
-    //     console.error('Error processing WebSocket message:', e);
-    //   }
-    // };
-
-    // ws.onerror = (error) => {
-    //   console.error('WebSocket error:', error);
-    // };
-
-    // ws.onclose = () => {
-    //   console.log('WebSocket disconnected');
-    //   // Optional: Implement reconnection logic
-    // };
-
-    // // Cleanup function
-    // return () => {
-    //   ws.close();
-    // };
      return () => {}; // Return empty cleanup if WebSocket is not used
-  }, [allDevices]); // Add allDevices as dependency
+  }, [allDevices]); // Dependency needed if ws logic uses it
+
 
   return (
     <div className="container mx-auto p-4 md:p-8">

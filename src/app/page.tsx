@@ -11,7 +11,7 @@ import { ThemeToggle } from '@/components/dashboard/ThemeToggle';
 import type { Mikrotik } from '@/services/mikrotik';
 import type { Mimosa } from '@/services/mimosa';
 import type { Ubnt } from '@/services/ubnt';
-import type { NetworkDeviceStatus, AlertState, PppoeUserDetails } from '@/types';
+import type { NetworkDeviceStatus, AlertState, PppoeUserDetails, NetworkDevice } from '@/types'; // Import NetworkDevice
 import { checkMikrotikConnection, getMikrotikUsers, MOCK_USERS } from '@/services/mikrotik';
 import { getMimosaSignalStrength, getMimosaTraffic } from '@/services/mimosa';
 import { getUbntSignalStrength, getUbntTraffic } from '@/services/ubnt';
@@ -23,16 +23,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils'; // Import the cn utility function
 import { useAuth } from '@/context/AuthContext'; // Import useAuth hook
 import { UserListCard } from '@/components/dashboard/UserListCard'; // Import UserListCard
+import { useToast } from '@/hooks/use-toast'; // Import useToast for notifications
 
-// Define the combined device type
-export type NetworkDevice =
-  | ({ type: 'mikrotik' } & Mikrotik)
-  | ({ type: 'mimosa' } & Mimosa)
-  | ({ type: 'ubnt' } & Ubnt);
+// Define the combined device type moved to types/index.ts
+// export type NetworkDevice =
+//   | ({ type: 'mikrotik' } & Mikrotik)
+//   | ({ type: 'mimosa' } & Mimosa)
+//   | ({ type: 'ubnt' } & Ubnt);
 
 export default function Dashboard() {
   const { isAuthenticated, logout } = useAuth();
   const router = useRouter();
+  const { toast } = useToast(); // Initialize toast hook
   const [deviceStatuses, setDeviceStatuses] = React.useState<Record<string, NetworkDeviceStatus>>({});
   const [loading, setLoading] = React.useState<boolean>(true);
   const [devices, setDevices] = React.useState<NetworkDevice[]>([]);
@@ -49,13 +51,47 @@ export default function Dashboard() {
 
   // Initialize devices state with mock data
   React.useEffect(() => {
-    setDevices([
-        ...MOCK_MIKROTIK_SERVERS.map((d) => ({ ...d, type: 'mikrotik' as const })),
-        ...MOCK_MIMOSA_TOWERS.map((d) => ({ ...d, type: 'mimosa' as const })),
-        ...MOCK_UBNT_TOWERS.map((d) => ({ ...d, type: 'ubnt' as const })),
-      ]
-    );
+    // --- Load devices from localStorage or use mock data ---
+    let initialDevices: NetworkDevice[] = [];
+    if (typeof window !== 'undefined') {
+        const storedDevices = localStorage.getItem('networkPilotDevices');
+        if (storedDevices) {
+            try {
+                initialDevices = JSON.parse(storedDevices);
+                // Add basic validation if needed
+                if (!Array.isArray(initialDevices)) {
+                     console.warn("Invalid device data in localStorage, falling back to mock data.");
+                     initialDevices = [];
+                }
+            } catch (e) {
+                console.error("Failed to parse devices from localStorage, falling back to mock data:", e);
+                initialDevices = [];
+            }
+        }
+    }
+
+    // If no stored data or parsing failed, use mock data
+    if (initialDevices.length === 0) {
+        initialDevices = [
+            ...MOCK_MIKROTIK_SERVERS.map((d) => ({ ...d, type: 'mikrotik' as const })),
+            ...MOCK_MIMOSA_TOWERS.map((d) => ({ ...d, type: 'mimosa' as const })),
+            ...MOCK_UBNT_TOWERS.map((d) => ({ ...d, type: 'ubnt' as const })),
+        ];
+    }
+    setDevices(initialDevices);
   }, []);
+
+    // --- Save devices to localStorage whenever they change ---
+    React.useEffect(() => {
+        if (typeof window !== 'undefined' && devices.length > 0) { // Don't save empty initial array
+            try {
+                localStorage.setItem('networkPilotDevices', JSON.stringify(devices));
+            } catch (e) {
+                console.error("Failed to save devices to localStorage:", e);
+            }
+        }
+    }, [devices]);
+
 
   const fetchDeviceStatuses = React.useCallback(async () => {
     setLoading(true); // Set loading true at the start
@@ -136,7 +172,7 @@ export default function Dashboard() {
 
   // Fetch statuses on initial render and when devices change
   React.useEffect(() => {
-    if (isAuthenticated) { // Only fetch if authenticated
+    if (isAuthenticated && devices.length > 0) { // Only fetch if authenticated and devices loaded
         fetchDeviceStatuses();
         // Fetch initial user list from all servers? Or just first? Decide strategy.
         // Example: fetch from the first Mikrotik server
@@ -174,21 +210,49 @@ export default function Dashboard() {
 
   // Handlers to add new devices (will update state and trigger refetch)
   const handleAddServer = (newServer: Mikrotik) => {
-    setDevices(prevDevices => [...prevDevices, { ...newServer, type: 'mikrotik' }]);
+    const newDevice: NetworkDevice = { ...newServer, type: 'mikrotik' };
+    setDevices(prevDevices => [...prevDevices, newDevice]);
      // Optionally trigger an immediate status fetch for the new device
-     // fetchSingleDeviceStatus({ ...newServer, type: 'mikrotik' });
+     // fetchSingleDeviceStatus(newDevice);
   };
 
   const handleAddTower = (newTower: Mimosa | Ubnt, type: 'mimosa' | 'ubnt') => {
-    setDevices(prevDevices => [...prevDevices, { ...newTower, type }]);
+     const newDevice: NetworkDevice = { ...newTower, type };
+    setDevices(prevDevices => [...prevDevices, newDevice]);
     // Optionally trigger an immediate status fetch for the new device
-    // fetchSingleDeviceStatus({ ...newTower, type });
+    // fetchSingleDeviceStatus(newDevice);
   };
 
   const handleLogout = () => {
     logout();
     router.push('/login');
   };
+
+   // Handler to delete a device
+   const handleDeleteDevice = (deviceId: string) => {
+       // Example deviceId format: 'mikrotik-192.168.88.1'
+       console.log("Deleting device with ID:", deviceId);
+       const [type, ip] = deviceId.split('-', 2); // Simple split assuming format
+       setDevices(prevDevices => {
+           const updatedDevices = prevDevices.filter(d => !(d.type === type && d.ipAddress === ip));
+           // Also remove the status entry for the deleted device
+           setDeviceStatuses(prevStatuses => {
+               const newStatuses = { ...prevStatuses };
+               delete newStatuses[deviceId];
+               return newStatuses;
+           });
+           // TODO: Add API call here to delete the device from the backend database
+           // e.g., deleteDeviceFromDB(deviceId);
+           toast({
+               title: "Device Removed",
+               description: `Device ${type} (${ip}) has been removed from the dashboard.`,
+               variant: "default" // Use default variant for info
+           });
+           return updatedDevices;
+       });
+
+   };
+
 
   // Show loading indicator until authentication status is confirmed
   if (isAuthenticated === undefined) {
@@ -248,7 +312,7 @@ export default function Dashboard() {
                          </CardContent>
                          {/* Skeleton for footer actions */}
                          <div className="flex items-center p-6 pt-0">
-                            <Skeleton className="h-8 w-20"/>
+                            <Skeleton className="h-8 w-20 ml-auto"/> {/* Adjusted margin */}
                          </div>
                       </Card>
                     ))
@@ -259,20 +323,29 @@ export default function Dashboard() {
                       return (
                         <DeviceCard
                           key={key}
+                          deviceId={key} // Pass the generated key as deviceId
                           device={device}
                           type={device.type}
                           status={status}
                           // Add handlers for settings actions
-                          onRestart={() => console.log(`Restart requested for ${device.name}`)}
-                          onViewDetails={() => console.log(`View details for ${device.name}`)}
+                          onRestart={() => console.log(`Restart requested for ${device.name}`)} // TODO: Implement actual restart
+                          onViewDetails={() => console.log(`View details for ${device.name}`)} // TODO: Implement detail view modal
                           onOpenWebInterface={() => {
                              // In a real app, might need http/https prefix
                              const url = `http://${device.ipAddress}`; // Basic assumption
                              window.open(url, '_blank');
                           }}
+                           onDelete={handleDeleteDevice} // Pass the delete handler
                         />
                       );
                     })}
+                    {devices.length === 0 && !loading && (
+                        <Card className="md:col-span-2 xl:col-span-3 flex items-center justify-center p-10 border-dashed">
+                           <p className="text-muted-foreground text-center">
+                             No devices added yet. <br/> Click 'Add Server' or 'Add Tower' to get started.
+                           </p>
+                        </Card>
+                    )}
               </div>
           </div>
 
@@ -284,4 +357,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

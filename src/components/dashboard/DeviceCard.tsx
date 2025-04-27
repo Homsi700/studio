@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { Wifi, WifiOff, Server, Users, ArrowDown, ArrowUp, Signal, SignalLow, SignalMedium, AlertTriangle, Settings, MoreVertical, RefreshCcw, ExternalLink, Info } from "lucide-react";
+import { Wifi, WifiOff, Server, Users, ArrowDown, ArrowUp, Signal, SignalLow, SignalMedium, AlertTriangle, Settings, MoreVertical, RefreshCcw, ExternalLink, Info, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,19 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog" // Import AlertDialog components
 import { cn } from "@/lib/utils";
 import type { DeviceCardProps, DeviceType, AlertState } from "@/types";
 import { SIGNAL_STRENGTH_THRESHOLD_WARN, SIGNAL_STRENGTH_THRESHOLD_ERROR, TRAFFIC_THRESHOLD_WARN } from "@/lib/constants";
@@ -69,7 +81,8 @@ const DeviceIcon: React.FC<{ type: DeviceType; connected: boolean }> = ({ type, 
   }
 };
 
-export function DeviceCard({ device, type, status, onRestart, onViewDetails, onOpenWebInterface }: DeviceCardProps) {
+export function DeviceCard({ device, type, status, deviceId, onRestart, onViewDetails, onOpenWebInterface, onDelete }: DeviceCardProps) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const badgeVariant = getStatusBadgeVariant(status.connected, status.alertState);
   const statusText = getStatusText(status.connected, status.alertState, status.signalStrength);
   const signalIcon = getSignalIcon(status.signalStrength);
@@ -86,6 +99,15 @@ export function DeviceCard({ device, type, status, onRestart, onViewDetails, onO
     : status.alertState === 'warning' ? 'shadow-lg shadow-yellow-500/30 dark:shadow-yellow-800/30'
     : 'hover:shadow-lg'; // Default hover shadow
 
+  const handleDeleteClick = (event: React.MouseEvent) => {
+      event.stopPropagation(); // Prevent dropdown from closing immediately
+      setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = () => {
+    onDelete(deviceId);
+    setShowDeleteConfirm(false);
+  }
 
   return (
     <Card className={cn("flex flex-col justify-between transition-shadow duration-300", cardBorderColor, cardGlow)}>
@@ -130,29 +152,63 @@ export function DeviceCard({ device, type, status, onRestart, onViewDetails, onO
       </CardContent>
       {/* Footer with Settings Dropdown */}
       <CardFooter className="pt-4">
-         <DropdownMenu>
-           <DropdownMenuTrigger asChild>
-             <Button variant="ghost" size="sm" className="ml-auto">
-               <Settings className="mr-2 h-4 w-4" /> Settings
-               {/* <MoreVertical className="h-4 w-4" /> */}
-             </Button>
-           </DropdownMenuTrigger>
-           <DropdownMenuContent align="end">
-             <DropdownMenuItem onClick={onRestart}>
-               <RefreshCcw className="mr-2 h-4 w-4" />
-               <span>Restart Device</span>
-             </DropdownMenuItem>
-             <DropdownMenuItem onClick={onViewDetails}>
-                <Info className="mr-2 h-4 w-4" />
-               <span>View Full Status</span>
-             </DropdownMenuItem>
-             <DropdownMenuItem onClick={onOpenWebInterface}>
-               <ExternalLink className="mr-2 h-4 w-4" />
-               <span>Open Web Interface</span>
-             </DropdownMenuItem>
-           </DropdownMenuContent>
-         </DropdownMenu>
+         <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+             <DropdownMenu>
+               <DropdownMenuTrigger asChild>
+                 <Button variant="ghost" size="sm" className="ml-auto">
+                   <Settings className="mr-2 h-4 w-4" /> Settings
+                   {/* <MoreVertical className="h-4 w-4" /> */}
+                 </Button>
+               </DropdownMenuTrigger>
+               <DropdownMenuContent align="end">
+                 <DropdownMenuItem onClick={onRestart}>
+                   <RefreshCcw className="mr-2 h-4 w-4" />
+                   <span>Restart Device</span>
+                 </DropdownMenuItem>
+                 <DropdownMenuItem onClick={onViewDetails}>
+                    <Info className="mr-2 h-4 w-4" />
+                   <span>View Full Status</span>
+                 </DropdownMenuItem>
+                 <DropdownMenuItem onClick={onOpenWebInterface}>
+                   <ExternalLink className="mr-2 h-4 w-4" />
+                   <span>Open Web Interface</span>
+                 </DropdownMenuItem>
+                 <DropdownMenuSeparator />
+                 {/* Use AlertDialogTrigger within the DropdownMenuItem */}
+                  <AlertDialogTrigger asChild>
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                        onSelect={(e) => e.preventDefault()} // Prevent default closing on select
+                      >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          <span>Delete Device</span>
+                      </DropdownMenuItem>
+                  </AlertDialogTrigger>
+               </DropdownMenuContent>
+             </DropdownMenu>
+
+           {/* Confirmation Dialog Content */}
+            <AlertDialogContent>
+                 <AlertDialogHeader>
+                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                   <AlertDialogDescription>
+                     This action cannot be undone. This will permanently remove the device
+                     <span className="font-semibold"> {device.name} ({device.ipAddress}) </span>
+                      from the dashboard. It will not remove the device from your network.
+                   </AlertDialogDescription>
+                 </AlertDialogHeader>
+                 <AlertDialogFooter>
+                   <AlertDialogCancel onClick={() => setShowDeleteConfirm(false)}>Cancel</AlertDialogCancel>
+                   <AlertDialogAction onClick={confirmDelete} className={buttonVariants({ variant: "destructive" })}>
+                     Delete
+                   </AlertDialogAction>
+                 </AlertDialogFooter>
+           </AlertDialogContent>
+         </AlertDialog>
       </CardFooter>
     </Card>
   );
 }
+
+// Helper function to get buttonVariants class names
+import { buttonVariants } from "@/components/ui/button" // Make sure this import is correct

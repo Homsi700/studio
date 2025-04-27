@@ -16,13 +16,22 @@ export interface NetworkDeviceStatus {
 
 export type DeviceType = 'mikrotik' | 'mimosa' | 'ubnt';
 
+// Combined device type used in the main page state
+export type NetworkDevice =
+  | ({ type: 'mikrotik' } & Mikrotik)
+  | ({ type: 'mimosa' } & Mimosa)
+  | ({ type: 'ubnt' } & Ubnt);
+
+// Props for the DeviceCard component
 export interface DeviceCardProps {
-  device: Mikrotik | Mimosa | Ubnt;
-  type: DeviceType;
+  device: NetworkDevice; // Use the combined type
+  type: DeviceType; // Keep type for specific logic if needed, though derivable from device.type
   status: NetworkDeviceStatus;
+  deviceId: string; // Unique identifier for the device (e.g., 'mikrotik-192.168.88.1')
   onRestart: () => void; // Callback for restarting the device
   onViewDetails: () => void; // Callback for viewing full status/details
   onOpenWebInterface: () => void; // Callback for opening the device's web UI
+  onDelete: (deviceId: string) => void; // Callback for deleting the device card
 }
 
 // Details for displaying individual PPPoE user information

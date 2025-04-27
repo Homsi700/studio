@@ -1,7 +1,6 @@
-
-import type { Mikrotik } from "@/services/mikrotik";
-import type { Mimosa } from "@/services/mimosa";
-import type { Ubnt } from "@/services/ubnt";
+import type { Mikrotik } from "./mikrotik";
+import type { Mimosa } from "./mimosa";
+import type { Ubnt } from "./ubnt";
 
 export type AlertState = 'normal' | 'warning' | 'error';
 
@@ -37,12 +36,25 @@ export interface DeviceCardProps {
 // Details for displaying individual PPPoE user information
 export interface PppoeUserDetails {
     username: string;
-    serverName: string; // Server the user is connected to
-    status: 'online' | 'offline';
-    speed: string; // Current profile/speed
-    registrationDate: string; // Date user was added
-    expiryDate: string; // Date subscription expires
+    serverName: string; // Server the user is configured on (from PPP Secret)
+    status: 'online' | 'offline'; // Actual connection status from PPP Active
+    speed: string; // Current profile/speed (from PPP Secret)
+    registrationDate?: string; // Date user was added (might be from comment or DB)
+    expiryDate?: string; // Date subscription expires (might be from comment or DB)
     ipAddress?: string; // Current IP if online
-    macAddress?: string; // MAC Address
+    macAddress?: string; // MAC Address if available
     uptime?: string; // Connection duration if online
+    disabled?: boolean; // Whether the account is administratively disabled (from PPP Secret)
+    comment?: string; // Comment field from PPP Secret (often used for notes/expiry)
 }
+
+// Actions for User Management
+export interface UserActions {
+    onEnableUser: (username: string, serverName: string) => Promise<void>;
+    onDisableUser: (username: string, serverName: string) => Promise<void>;
+    onRenewUser: (username: string, serverName: string, currentExpiry?: string) => Promise<void>; // Pass current expiry for calculation
+    // Add onDeleteUser if needed
+}
+
+// Re-export Mikrotik type for easier import in components that need it
+export type { Mikrotik };

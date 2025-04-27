@@ -1,12 +1,9 @@
-
-"use client";
-
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form"; // Import Controller
 import * as z from "zod";
 import { PlusCircle } from "lucide-react";
-import { format } from 'date-fns'; // Import date-fns for formatting
+import { format, addMonths } from 'date-fns'; // Import date-fns for formatting and adding months
 
 import { Button } from "@/components/ui/button";
 import {
@@ -30,16 +27,17 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import type { Mikrotik, PppoeUserPayload } from "@/services/mikrotik"; // Import PppoeUserPayload
-import { addPppoeUser } from "@/services/mikrotik"; // Import the actual service function
+// Removed direct import of addPppoeUser service
 
 const pppoeUserSchema = z.object({
   username: z.string().min(1, "Username is required"),
   password: z.string().min(1, "Password is required"),
   mikrotikServerName: z.string().min(1, "Server selection is required"),
-  speed: z.string().min(1, "Speed is required (e.g., 10M/10M)"),
-  expiry: z.string().refine((date) => !isNaN(Date.parse(date)), { // Validate date string
-    message: "Invalid expiry date format",
-  }),
+  speed: z.string().min(1, "Speed/Profile is required"), // Ensure profile is provided
+  // expiry: z.string().optional(), // Make expiry optional, default handled below
+  expiry: z.string().refine((date) => date === '' || !isNaN(Date.parse(date)), { // Allow empty or valid date
+      message: "Invalid expiry date format (YYYY-MM-DD)",
+  }).optional(), // Make expiry optional
   notes: z.string().optional(),
 });
 
@@ -47,9 +45,10 @@ type PppoeUserFormData = z.infer<typeof pppoeUserSchema>;
 
 interface AddUserDialogProps {
   mikrotikServers: Mikrotik[]; // Accept servers dynamically via props
+  onAddUser: (serverName: string, payload: PppoeUserPayload, expiryDate?: string) => Promise<boolean>; // Callback prop
 }
 
-export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) {
+export function AddUserDialog({ mikrotikServers, onAddUser }: AddUserDialogProps) {
   const { toast } = useToast();
   const [isOpen, setIsOpen] = React.useState(false);
   const {
@@ -65,17 +64,18 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) {
         password: "",
         mikrotikServerName: "",
         speed: "",
-        expiry: format(new Date(), 'yyyy-MM-dd'), // Default to today
+        // Set default expiry to 1 month from now
+        expiry: format(addMonths(new Date(), 1), 'yyyy-MM-dd'),
         notes: "",
     }
   });
 
    const onSubmit = async (data: PppoeUserFormData) => {
-    const selectedServer = mikrotikServers.find(server => server.name === data.mikrotikServerName);
-    if (!selectedServer) {
+    const selectedServerName = data.mikrotikServerName; // Get server name from form
+    if (!selectedServerName) {
       toast({
         title: "Error",
-        description: "Selected Mikrotik server not found.",
+        description: "Please select a Mikrotik server.",
         variant: "destructive",
       });
       return;
@@ -85,36 +85,39 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) {
     const newUserPayload: PppoeUserPayload = {
       username: data.username,
       password: data.password,
-      profile: data.speed, // Assuming speed corresponds to a profile name on Mikrotik
-      comment: data.notes || '', // Use notes as comment, default to empty string
-      // Expiry needs to be handled/formatted by the backend API call if necessary
-      // The 'expiry' field from the form (YYYY-MM-DD) is available in 'data.expiry'
-      // The backend addPppoeUser function should know how to use this.
+      profile: data.speed, // Use speed field as profile name
+      comment: data.notes || '', // Use notes as comment
+      // No expiry in payload, handled separately via comment or scheduler
     };
 
     try {
-      // Use the actual API call
-      console.log("Submitting new user:", newUserPayload, "to server:", selectedServer, "with expiry:", data.expiry);
-      await addPppoeUser(selectedServer, newUserPayload, data.expiry); // Pass expiry separately if needed by API
+        // Call the parent's handler function
+        const success = await onAddUser(selectedServerName, newUserPayload, data.expiry);
 
-      toast({
-        title: "Success",
-        description: `User ${data.username} added successfully to ${selectedServer.name}.`,
-      });
-      reset({ // Reset form with default expiry
-         username: "",
-         password: "",
-         mikrotikServerName: data.mikrotikServerName, // Keep server selected maybe?
-         speed: "",
-         expiry: format(new Date(), 'yyyy-MM-dd'),
-         notes: "",
-      });
-      setIsOpen(false); // Close dialog
+        if (success) {
+            // Toast is handled by the parent now on success/failure of the actual API call
+            // toast({
+            //   title: "Success",
+            //   description: `User ${data.username} added successfully request sent.`,
+            // });
+             reset({ // Reset form with default expiry
+                username: "",
+                password: "",
+                mikrotikServerName: data.mikrotikServerName, // Keep server selected
+                speed: "",
+                 expiry: format(addMonths(new Date(), 1), 'yyyy-MM-dd'),
+                notes: "",
+             });
+            setIsOpen(false); // Close dialog
+        }
+        // else: Failure toast is handled by the parent component's catch block in handleAddPppoeUser
     } catch (error) {
-      console.error("Failed to add PPPoE user:", error);
+      // This catch block might not be reached if the parent handles errors,
+      // but kept for safety.
+      console.error("Error in AddUserDialog onSubmit (should be handled by parent):", error);
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : `Failed to add user ${data.username}. Please check API logs.`,
+        title: "Dialog Submission Error",
+        description: "An unexpected error occurred.",
         variant: "destructive",
       });
     }
@@ -128,7 +131,7 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) {
             password: "",
             mikrotikServerName: "",
             speed: "",
-            expiry: format(new Date(), 'yyyy-MM-dd'),
+             expiry: format(addMonths(new Date(), 1), 'yyyy-MM-dd'),
             notes: "",
         });
     }
@@ -147,7 +150,7 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) {
         <DialogHeader>
           <DialogTitle>Add New PPPoE User</DialogTitle>
           <DialogDescription>
-            Enter the details for the new PPPoE user. Click save when you're done.
+            Enter user details. The account will be created on the selected server.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
@@ -217,14 +220,14 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) {
             {/* Notes/Comment */}
              <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="notes" className="text-right">
-                Notes
+                Notes (Comment)
               </Label>
               <Textarea id="notes" {...register("notes")} className="col-span-3" placeholder="Optional notes (e.g., customer name, phone)"/>
             </div>
           </div>
           <DialogFooter>
             <Button type="submit" disabled={isSubmitting || mikrotikServers.length === 0}>
-              {isSubmitting ? "Saving..." : "Save User"}
+              {isSubmitting ? "Adding..." : "Add User"}
             </Button>
           </DialogFooter>
         </form>
@@ -232,4 +235,3 @@ export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) {
     </Dialog>
   );
 }
-

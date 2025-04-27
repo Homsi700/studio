@@ -1,4 +1,3 @@
-
 'use client'; // Mark as client component for hooks and event handlers
 
 import * as React from 'react';
@@ -11,10 +10,12 @@ import { ThemeToggle } from '@/components/dashboard/ThemeToggle';
 import type { Mikrotik } from '@/services/mikrotik';
 import type { Mimosa } from '@/services/mimosa';
 import type { Ubnt } from '@/services/ubnt';
-import type { NetworkDeviceStatus, AlertState, PppoeUserDetails, NetworkDevice } from '@/types'; // Import NetworkDevice
-import { checkMikrotikConnection, getMikrotikUsers, MOCK_USERS } from '@/services/mikrotik';
+import type { NetworkDeviceStatus, AlertState, PppoeUserDetails, NetworkDevice, UserActions } from '@/types'; // Import NetworkDevice, UserActions
+import { checkMikrotikConnection, getMikrotikUsers, enablePppoeUser, disablePppoeUser, renewPppoeUser, addPppoeUser } from '@/services/mikrotik'; // Import user actions
 import { getMimosaSignalStrength, getMimosaTraffic } from '@/services/mimosa';
 import { getUbntSignalStrength, getUbntTraffic } from '@/services/ubnt';
+import { addServer, restartMikrotikServer } from '@/services/servers'; // Import server actions
+import { addTower, restartTowerDevice } from '@/services/towers'; // Import tower actions
 import { Button } from '@/components/ui/button';
 import { RefreshCw, LogOut } from 'lucide-react';
 import { MOCK_MIKROTIK_SERVERS, MOCK_MIMOSA_TOWERS, MOCK_UBNT_TOWERS, TRAFFIC_THRESHOLD_WARN } from '@/lib/constants'; // Import mock data and constants
@@ -24,12 +25,6 @@ import { cn } from '@/lib/utils'; // Import the cn utility function
 import { useAuth } from '@/context/AuthContext'; // Import useAuth hook
 import { UserListCard } from '@/components/dashboard/UserListCard'; // Import UserListCard
 import { useToast } from '@/hooks/use-toast'; // Import useToast for notifications
-
-// Define the combined device type moved to types/index.ts
-// export type NetworkDevice =
-//   | ({ type: 'mikrotik' } & Mikrotik)
-//   | ({ type: 'mimosa' } & Mimosa)
-//   | ({ type: 'ubnt' } & Ubnt);
 
 export default function Dashboard() {
   const { isAuthenticated, logout } = useAuth();
@@ -49,16 +44,14 @@ export default function Dashboard() {
   }, [isAuthenticated, router]);
 
 
-  // Initialize devices state with mock data
+  // Initialize devices state with mock data or from localStorage
   React.useEffect(() => {
-    // --- Load devices from localStorage or use mock data ---
     let initialDevices: NetworkDevice[] = [];
     if (typeof window !== 'undefined') {
         const storedDevices = localStorage.getItem('networkPilotDevices');
         if (storedDevices) {
             try {
                 initialDevices = JSON.parse(storedDevices);
-                // Add basic validation if needed
                 if (!Array.isArray(initialDevices)) {
                      console.warn("Invalid device data in localStorage, falling back to mock data.");
                      initialDevices = [];
@@ -69,7 +62,6 @@ export default function Dashboard() {
             }
         }
     }
-
     // If no stored data or parsing failed, use mock data
     if (initialDevices.length === 0) {
         initialDevices = [
@@ -77,6 +69,10 @@ export default function Dashboard() {
             ...MOCK_MIMOSA_TOWERS.map((d) => ({ ...d, type: 'mimosa' as const })),
             ...MOCK_UBNT_TOWERS.map((d) => ({ ...d, type: 'ubnt' as const })),
         ];
+         // Save mock data to localStorage initially if it wasn't there
+         if (typeof window !== 'undefined') {
+             localStorage.setItem('networkPilotDevices', JSON.stringify(initialDevices));
+         }
     }
     setDevices(initialDevices);
   }, []);
@@ -92,6 +88,48 @@ export default function Dashboard() {
         }
     }, [devices]);
 
+   // Helper to find a server by name
+   const findServerByName = (name: string): Mikrotik | undefined => {
+       return devices.find(d => d.type === 'mikrotik' && d.name === name) as Mikrotik | undefined;
+   };
+
+    // Function to fetch users from all Mikrotik servers
+    const fetchAllMikrotikUsers = React.useCallback(async () => {
+        if (!isAuthenticated) return;
+        setLoadingUsers(true);
+        const mikrotikServers = devices.filter(d => d.type === 'mikrotik') as Mikrotik[];
+        const allUsersPromises = mikrotikServers.map(server => getMikrotikUsers(server));
+
+        try {
+            const results = await Promise.allSettled(allUsersPromises);
+            const combinedUsers: PppoeUserDetails[] = [];
+            results.forEach((result, index) => {
+                if (result.status === 'fulfilled') {
+                    combinedUsers.push(...result.value);
+                } else {
+                    console.error(`Failed to fetch users from ${mikrotikServers[index].name}:`, result.reason);
+                    toast({
+                        title: "User Fetch Error",
+                        description: `Could not fetch users from ${mikrotikServers[index].name}.`,
+                        variant: "destructive",
+                    });
+                }
+            });
+            // Simple deduplication by username (assuming usernames are unique across servers for display, might need refinement)
+             const uniqueUsers = Array.from(new Map(combinedUsers.map(user => [`${user.username}-${user.serverName}`, user])).values());
+             setPppoeUsers(uniqueUsers);
+
+        } catch (error) {
+             console.error("Error fetching all Mikrotik users:", error);
+             toast({
+                 title: "Error",
+                 description: "Could not fetch user lists from servers.",
+                 variant: "destructive",
+             });
+        } finally {
+            setLoadingUsers(false);
+        }
+    }, [devices, isAuthenticated, toast]); // Add toast
 
   const fetchDeviceStatuses = React.useCallback(async () => {
     setLoading(true); // Set loading true at the start
@@ -106,25 +144,28 @@ export default function Dashboard() {
 
           if (device.type === 'mikrotik') {
             const isConnected = await checkMikrotikConnection(device);
-            const users = isConnected ? Math.floor(Math.random() * 50) + 5 : 0; // Simulate 5-55 users
+            // Fetch actual user count if connected
+             let userCount = 0;
+             if (isConnected) {
+                 try {
+                    // In a real API, you'd fetch `/ppp active print count-only` or similar
+                    // For simulation, use the length of fetched users for this server
+                    const serverUsers = await getMikrotikUsers(device);
+                    userCount = serverUsers.length;
+                 } catch {
+                     userCount = 0; // Default to 0 if user fetch fails
+                 }
+             }
+
             const downloadSpeed = isConnected ? `${(Math.random() * 100 + 10).toFixed(1)} Mbps` : '0 Mbps'; // 10-110 Mbps
             const uploadSpeed = isConnected ? `${(Math.random() * 50 + 5).toFixed(1)} Mbps` : '0 Mbps'; // 5-55 Mbps
             traffic = Math.random() * (TRAFFIC_THRESHOLD_WARN * 1.5); // Simulate traffic
-            status = { connected: isConnected, users, downloadSpeed, uploadSpeed, alertState: traffic > TRAFFIC_THRESHOLD_WARN ? 'warning' : 'normal' };
+            status = { connected: isConnected, users: userCount, downloadSpeed, uploadSpeed, alertState: traffic > TRAFFIC_THRESHOLD_WARN ? 'warning' : 'normal' };
 
-             // Fetch users only for connected Mikrotik devices (can be optimized)
+             // Fetch detailed users after status check (triggered separately)
              if (isConnected) {
-                setLoadingUsers(true);
-                try {
-                  // const usersData = await getMikrotikUsers(device); // Use actual API call later
-                  const usersData = MOCK_USERS; // Using mock data for now
-                  setPppoeUsers(prev => [...new Map([...prev, ...usersData].map(item => [item.username, item])).values()]); // Merge and deduplicate users
-                } catch (userError) {
-                  console.error(`Failed to fetch users for ${device.name}:`, userError);
-                   // Handle user fetch error if needed, maybe show a toast
-                } finally {
-                    setLoadingUsers(false);
-                }
+                 // fetchAllMikrotikUsers(); // Trigger user fetch if a Mikrotik is connected
+                 // Fetching all users moved to its own effect/callback
              }
 
 
@@ -168,25 +209,25 @@ export default function Dashboard() {
 
     setDeviceStatuses(newStatuses);
     setLoading(false); // Set loading false after all fetches complete
-  }, [devices]); // Add devices as dependency
+  }, [devices]); // Removed fetchAllMikrotikUsers from here
 
   // Fetch statuses on initial render and when devices change
   React.useEffect(() => {
     if (isAuthenticated && devices.length > 0) { // Only fetch if authenticated and devices loaded
         fetchDeviceStatuses();
-        // Fetch initial user list from all servers? Or just first? Decide strategy.
-        // Example: fetch from the first Mikrotik server
-        const firstMikrotik = devices.find(d => d.type === 'mikrotik');
-        // if (firstMikrotik) {
-        //     // fetchInitialUsers(firstMikrotik); // Call a function to fetch initial users
-        //      setPppoeUsers(MOCK_USERS); // Using mock data for now
-        // }
+        fetchAllMikrotikUsers(); // Fetch users initially
 
         // Set up interval for periodic refresh (e.g., every 30 seconds)
-        const intervalId = setInterval(fetchDeviceStatuses, 30000);
-        return () => clearInterval(intervalId); // Cleanup interval on unmount
+        const statusIntervalId = setInterval(fetchDeviceStatuses, 30000);
+        // Refresh users less frequently (e.g., every 60 seconds)
+        const userIntervalId = setInterval(fetchAllMikrotikUsers, 60000);
+
+        return () => {
+            clearInterval(statusIntervalId); // Cleanup interval on unmount
+            clearInterval(userIntervalId);
+        }
     }
-  }, [fetchDeviceStatuses, isAuthenticated, devices]); // Include devices in dependencies
+  }, [fetchDeviceStatuses, fetchAllMikrotikUsers, isAuthenticated, devices]); // Include dependencies
 
 
   // --- WebSocket Simulation (Placeholder) ---
@@ -200,28 +241,52 @@ export default function Dashboard() {
         // const updatedData = JSON.parse(event.data);
         // Handle updates: update deviceStatuses, pppoeUsers etc.
         // Example: setDeviceStatuses(prev => ({ ...prev, [updatedData.key]: updatedData.status }));
+        // if (updatedData.type === 'userUpdate') fetchAllMikrotikUsers(); // Refresh users on specific events
     // };
     // ws.onerror = (error) => { console.error('WebSocket error:', error); };
     // ws.onclose = () => { console.log('WebSocket disconnected'); };
     // return () => { ws.close(); }; // Cleanup
 
      return () => {}; // Return empty cleanup if WebSocket is not used
-  }, [isAuthenticated, devices]); // Reconnect if auth status or devices change
+  }, [isAuthenticated, devices, fetchAllMikrotikUsers]); // Reconnect if auth status or devices change
 
   // Handlers to add new devices (will update state and trigger refetch)
-  const handleAddServer = (newServer: Mikrotik) => {
-    const newDevice: NetworkDevice = { ...newServer, type: 'mikrotik' };
-    setDevices(prevDevices => [...prevDevices, newDevice]);
-     // Optionally trigger an immediate status fetch for the new device
-     // fetchSingleDeviceStatus(newDevice);
+  const handleAddServer = (newServerData: Omit<Mikrotik, 'type'>) => {
+      const newDevice: NetworkDevice = { ...newServerData, type: 'mikrotik' };
+      setDevices(prevDevices => [...prevDevices, newDevice]);
+      // Optionally trigger an immediate status fetch for the new device
+      // fetchSingleDeviceStatus(newDevice);
   };
 
-  const handleAddTower = (newTower: Mimosa | Ubnt, type: 'mimosa' | 'ubnt') => {
-     const newDevice: NetworkDevice = { ...newTower, type };
+  const handleAddTower = (newTowerData: Omit<Mimosa | Ubnt, 'type'>, type: 'mimosa' | 'ubnt') => {
+     const newDevice: NetworkDevice = { ...newTowerData, type };
     setDevices(prevDevices => [...prevDevices, newDevice]);
     // Optionally trigger an immediate status fetch for the new device
     // fetchSingleDeviceStatus(newDevice);
   };
+
+   // Handler for adding a PPPoE User via the dialog
+   const handleAddPppoeUser = async (serverName: string, payload: any, expiryDate?: string): Promise<boolean> => {
+       const server = findServerByName(serverName);
+       if (!server) {
+           toast({ title: "Error", description: `Server '${serverName}' not found.`, variant: "destructive" });
+           return false;
+       }
+       try {
+           await addPppoeUser(server, payload, expiryDate);
+           toast({ title: "Success", description: `User ${payload.username} added to ${serverName}.` });
+            fetchAllMikrotikUsers(); // Refresh user list after adding
+           return true;
+       } catch (error) {
+            toast({
+                title: "Error Adding User",
+                description: error instanceof Error ? error.message : `Failed to add user ${payload.username}.`,
+                variant: "destructive",
+            });
+           return false;
+       }
+   };
+
 
   const handleLogout = () => {
     logout();
@@ -229,10 +294,23 @@ export default function Dashboard() {
   };
 
    // Handler to delete a device
-   const handleDeleteDevice = (deviceId: string) => {
+   const handleDeleteDevice = async (deviceId: string) => {
        // Example deviceId format: 'mikrotik-192.168.88.1'
        console.log("Deleting device with ID:", deviceId);
        const [type, ip] = deviceId.split('-', 2); // Simple split assuming format
+
+       // TODO: Add API call here to delete the device from the backend database
+       // try {
+       //   await deleteDeviceFromDB(deviceId); // Replace with your actual API call
+       // } catch (error) {
+       //      toast({
+       //          title: "Error Deleting Device",
+       //          description: `Failed to remove device from backend. ${error.message}`,
+       //          variant: "destructive"
+       //      });
+       //     return; // Stop if backend deletion fails
+       // }
+
        setDevices(prevDevices => {
            const updatedDevices = prevDevices.filter(d => !(d.type === type && d.ipAddress === ip));
            // Also remove the status entry for the deleted device
@@ -241,8 +319,11 @@ export default function Dashboard() {
                delete newStatuses[deviceId];
                return newStatuses;
            });
-           // TODO: Add API call here to delete the device from the backend database
-           // e.g., deleteDeviceFromDB(deviceId);
+            // Remove users associated with the deleted server (optional, based on desired behavior)
+            if (type === 'mikrotik') {
+                setPppoeUsers(prevUsers => prevUsers.filter(user => user.serverName !== ip)); // Assuming serverName is IP for filtering, adjust if needed
+            }
+
            toast({
                title: "Device Removed",
                description: `Device ${type} (${ip}) has been removed from the dashboard.`,
@@ -251,7 +332,73 @@ export default function Dashboard() {
            return updatedDevices;
        });
 
+
    };
+
+    // Handler for restarting a device
+    const handleRestartDevice = async (device: NetworkDevice) => {
+        const deviceId = `${device.type}-${device.ipAddress}`;
+        console.log(`Restart requested for ${device.name} (${deviceId})`);
+         toast({ title: "Restarting...", description: `Sending restart command to ${device.name}.` });
+        try {
+            let success = false;
+            if (device.type === 'mikrotik') {
+                success = await restartMikrotikServer(device.ipAddress);
+            } else if (device.type === 'mimosa' || device.type === 'ubnt') {
+                success = await restartTowerDevice(device.ipAddress, device.type);
+            }
+
+            if (success) {
+                toast({ title: "Restart Initiated", description: `${device.name} is restarting. Status will update shortly.` });
+                // Optionally grey out the card or show a specific restarting status temporarily
+                setDeviceStatuses(prev => ({ ...prev, [deviceId]: { ...prev[deviceId], connected: false, alertState: 'normal' } })); // Show as disconnected briefly
+                 // Re-fetch status after a delay
+                 setTimeout(() => fetchDeviceStatuses(), 15000); // Check status after 15s
+                 setTimeout(() => fetchDeviceStatuses(), 45000); // Check status after 45s
+            } else {
+                throw new Error("Restart command failed or was not acknowledged.");
+            }
+        } catch (error) {
+             toast({
+                 title: "Restart Failed",
+                 description: error instanceof Error ? error.message : `Could not restart ${device.name}.`,
+                 variant: "destructive"
+             });
+        }
+    };
+
+     // Consolidated handler for user actions from UserListCard
+     const handleUserAction = async (action: keyof UserActions, username: string, serverName: string, payload?: any): Promise<boolean> => {
+        const server = findServerByName(serverName);
+        if (!server) {
+            toast({ title: "Error", description: `Server '${serverName}' not found for user action.`, variant: "destructive" });
+            return false;
+        }
+
+        try {
+            switch (action) {
+                case 'onEnableUser':
+                    await enablePppoeUser(server, username);
+                    break;
+                case 'onDisableUser':
+                    await disablePppoeUser(server, username);
+                    break;
+                case 'onRenewUser':
+                    await renewPppoeUser(server, username, payload as string | undefined); // Payload is current expiry
+                    break;
+                default:
+                    console.warn("Unknown user action:", action);
+                    return false;
+            }
+            // Success toast is handled in the UserListCard after this promise resolves
+            return true;
+        } catch (error) {
+             console.error(`Error performing ${action} for user ${username}:`, error);
+             // Error toast is handled in the UserListCard's catch block
+             // throw error; // Re-throw to be caught by the caller's catch block
+             return false; // Indicate failure
+        }
+    };
 
 
   // Show loading indicator until authentication status is confirmed
@@ -272,10 +419,13 @@ export default function Dashboard() {
           <p className="text-muted-foreground">Unified Network Management Dashboard</p>
         </div>
         <div className="flex flex-wrap items-center space-x-2">
-           <Button variant="outline" size="icon" onClick={fetchDeviceStatuses} disabled={loading} aria-label="Refresh statuses">
-             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+           <Button variant="outline" size="icon" onClick={() => {fetchDeviceStatuses(); fetchAllMikrotikUsers();}} disabled={loading || loadingUsers} aria-label="Refresh statuses">
+             <RefreshCw className={cn("h-4 w-4", (loading || loadingUsers) && "animate-spin")} />
            </Button>
-          <AddUserDialog mikrotikServers={devices.filter(d => d.type === 'mikrotik') as Mikrotik[]} />
+          <AddUserDialog
+              mikrotikServers={devices.filter(d => d.type === 'mikrotik') as Mikrotik[]}
+              onAddUser={handleAddPppoeUser} // Pass the handler
+          />
           <AddServerDialog onAddServer={handleAddServer} /> {/* Add Server Button */}
           <AddTowerDialog
              onAddTower={handleAddTower}
@@ -328,7 +478,7 @@ export default function Dashboard() {
                           type={device.type}
                           status={status}
                           // Add handlers for settings actions
-                          onRestart={() => console.log(`Restart requested for ${device.name}`)} // TODO: Implement actual restart
+                          onRestart={() => handleRestartDevice(device)} // Pass device object
                           onViewDetails={() => console.log(`View details for ${device.name}`)} // TODO: Implement detail view modal
                           onOpenWebInterface={() => {
                              // In a real app, might need http/https prefix
@@ -351,7 +501,13 @@ export default function Dashboard() {
 
            {/* User List Card (takes 1/3 width on large screens) */}
            <div className="lg:col-span-1">
-              <UserListCard users={pppoeUsers} isLoading={loadingUsers} />
+              <UserListCard
+                  users={pppoeUsers}
+                  isLoading={loadingUsers}
+                  mikrotikServers={devices.filter(d => d.type === 'mikrotik') as Mikrotik[]} // Pass only Mikrotik servers
+                  onUserAction={handleUserAction} // Pass consolidated handler
+                  onRefreshUsers={fetchAllMikrotikUsers} // Pass refresh handler
+               />
            </div>
       </div>
     </div>

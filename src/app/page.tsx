@@ -3,6 +3,8 @@
 import * as React from 'react';
 import { DeviceCard } from '@/components/dashboard/DeviceCard';
 import { AddUserDialog } from '@/components/dashboard/AddUserDialog';
+import { AddServerDialog } from '@/components/dashboard/AddServerDialog'; // Import AddServerDialog
+import { AddTowerDialog } from '@/components/dashboard/AddTowerDialog'; // Import AddTowerDialog
 import { ThemeToggle } from '@/components/dashboard/ThemeToggle';
 import type { Mikrotik } from '@/services/mikrotik';
 import type { Mimosa } from '@/services/mimosa';
@@ -27,13 +29,18 @@ type NetworkDevice =
 export default function Dashboard() {
   const [deviceStatuses, setDeviceStatuses] = React.useState<Record<string, NetworkDeviceStatus>>({});
   const [loading, setLoading] = React.useState<boolean>(true); // Add loading state
+  const [devices, setDevices] = React.useState<NetworkDevice[]>([]); // State to hold devices
 
   // Combine all devices into a single array for easier mapping
-  const allDevices: NetworkDevice[] = React.useMemo(() => [ // Use useMemo to prevent re-creation on every render
-    ...MOCK_MIKROTIK_SERVERS.map((d) => ({ ...d, type: 'mikrotik' as const })),
-    ...MOCK_MIMOSA_TOWERS.map((d) => ({ ...d, type: 'mimosa' as const })),
-    ...MOCK_UBNT_TOWERS.map((d) => ({ ...d, type: 'ubnt' as const })),
-  ], []); // Empty dependency array means this runs only once
+  // Initialize devices state with mock data
+  React.useEffect(() => {
+    setDevices([
+        ...MOCK_MIKROTIK_SERVERS.map((d) => ({ ...d, type: 'mikrotik' as const })),
+        ...MOCK_MIMOSA_TOWERS.map((d) => ({ ...d, type: 'mimosa' as const })),
+        ...MOCK_UBNT_TOWERS.map((d) => ({ ...d, type: 'ubnt' as const })),
+      ]
+    );
+  }, []);
 
 
   const fetchDeviceStatuses = React.useCallback(async () => {
@@ -42,7 +49,7 @@ export default function Dashboard() {
 
     // Use Promise.allSettled to fetch statuses concurrently
     await Promise.allSettled(
-      allDevices.map(async (device) => {
+      devices.map(async (device) => {
         const key = `${device.type}-${device.ipAddress}`; // Unique key for each device
         try {
           let status: NetworkDeviceStatus = { connected: false };
@@ -74,9 +81,9 @@ export default function Dashboard() {
 
     setDeviceStatuses(newStatuses);
     setLoading(false); // Set loading false after all fetches complete
-  }, [allDevices]); // Add allDevices as dependency
+  }, [devices]); // Add devices as dependency
 
-  // Fetch statuses on initial render
+  // Fetch statuses on initial render and when devices change
   React.useEffect(() => {
     fetchDeviceStatuses();
     // Optional: Set up interval for periodic refresh (e.g., every 30 seconds)
@@ -97,21 +104,32 @@ export default function Dashboard() {
     // return () => { ws.close(); }; // Cleanup
 
      return () => {}; // Return empty cleanup if WebSocket is not used
-  }, [allDevices]); // Dependency needed if ws logic uses it
+  }, [devices]); // Dependency needed if ws logic uses it
+
+  // Handlers to add new devices (will update state and trigger refetch)
+  const handleAddServer = (newServer: Mikrotik) => {
+    setDevices(prevDevices => [...prevDevices, { ...newServer, type: 'mikrotik' }]);
+  };
+
+  const handleAddTower = (newTower: Mimosa | Ubnt, type: 'mimosa' | 'ubnt') => {
+    setDevices(prevDevices => [...prevDevices, { ...newTower, type }]);
+  };
 
 
   return (
     <div className="container mx-auto p-4 md:p-8">
-      <header className="mb-8 flex items-center justify-between">
+      <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-primary">Network Pilot</h1>
           <p className="text-muted-foreground">Unified Network Management Dashboard</p>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center space-x-2">
            <Button variant="outline" size="icon" onClick={fetchDeviceStatuses} disabled={loading} aria-label="Refresh statuses">
              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
            </Button>
-          <AddUserDialog mikrotikServers={MOCK_MIKROTIK_SERVERS} />
+          <AddUserDialog mikrotikServers={devices.filter(d => d.type === 'mikrotik') as Mikrotik[]} />
+          <AddServerDialog onAddServer={handleAddServer} /> {/* Add Server Button */}
+          <AddTowerDialog onAddTower={handleAddTower} /> {/* Add Tower Button */}
           <ThemeToggle />
         </div>
       </header>
@@ -120,7 +138,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {loading
           ? // Display skeletons while loading
-            Array.from({ length: allDevices.length }).map((_, index) => (
+            Array.from({ length: devices.length || 8 }).map((_, index) => ( // Use devices.length or fallback
               <Card key={index} className="flex flex-col justify-between">
                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                    <Skeleton className="h-6 w-3/5" />
@@ -138,7 +156,7 @@ export default function Dashboard() {
               </Card>
             ))
           : // Display actual device cards when loaded
-            allDevices.map((device) => {
+            devices.map((device) => {
               const key = `${device.type}-${device.ipAddress}`;
               const status = deviceStatuses[key] || { connected: false }; // Default to disconnected if status not found
               return (

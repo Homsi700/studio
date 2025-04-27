@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form"; // Import Controller
 import * as z from "zod";
 import { PlusCircle } from "lucide-react";
 
@@ -29,7 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import type { Mikrotik, PppoeUser } from "@/services/mikrotik";
 import { addPppoeUser } from "@/services/mikrotik"; // Assuming this function handles API call
-import { MOCK_MIKROTIK_SERVERS } from "@/lib/constants"; // Import mock servers
+// Removed import of MOCK_MIKROTIK_SERVERS as it will come from props
 
 const pppoeUserSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -43,20 +43,28 @@ const pppoeUserSchema = z.object({
 type PppoeUserFormData = z.infer<typeof pppoeUserSchema>;
 
 interface AddUserDialogProps {
-  mikrotikServers?: Mikrotik[]; // Make servers optional
+  mikrotikServers: Mikrotik[]; // Accept servers dynamically via props
 }
 
-export function AddUserDialog({ mikrotikServers = MOCK_MIKROTIK_SERVERS }: AddUserDialogProps) {
+export function AddUserDialog({ mikrotikServers }: AddUserDialogProps) { // Use the passed prop
   const { toast } = useToast();
   const [isOpen, setIsOpen] = React.useState(false);
   const {
     register,
     handleSubmit,
     reset,
-    control,
+    control, // Use control for Select
     formState: { errors, isSubmitting },
   } = useForm<PppoeUserFormData>({
     resolver: zodResolver(pppoeUserSchema),
+    defaultValues: { // Add default values
+        username: "",
+        password: "",
+        mikrotikServerName: "",
+        speed: "",
+        expiry: "",
+        notes: "",
+    }
   });
 
    const onSubmit = async (data: PppoeUserFormData) => {
@@ -100,10 +108,19 @@ export function AddUserDialog({ mikrotikServers = MOCK_MIKROTIK_SERVERS }: AddUs
     }
   };
 
+   // Function to reset form when dialog is closed
+   const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      reset(); // Reset form when closing
+    }
+    setIsOpen(open);
+  };
+
+
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button>
+        <Button disabled={mikrotikServers.length === 0}> {/* Disable if no servers */}
           <PlusCircle className="mr-2 h-4 w-4" /> Add PPPoE User
         </Button>
       </DialogTrigger>
@@ -134,21 +151,29 @@ export function AddUserDialog({ mikrotikServers = MOCK_MIKROTIK_SERVERS }: AddUs
               <Label htmlFor="mikrotikServerName" className="text-right">
                 Server
               </Label>
-               <Select
-                 onValueChange={(value) => control._formValues.mikrotikServerName = value} // Use control to set value for Select
-                 name="mikrotikServerName" // Add name attribute
-               >
-                <SelectTrigger className="col-span-3" id="mikrotikServerName" aria-invalid={errors.mikrotikServerName ? "true" : "false"}>
-                  <SelectValue placeholder="Select a server" />
-                </SelectTrigger>
-                <SelectContent>
-                  {mikrotikServers.map((server) => (
-                    <SelectItem key={server.name} value={server.name}>
-                      {server.name} ({server.ipAddress})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <Controller
+                  name="mikrotikServerName"
+                  control={control}
+                  render={({ field }) => (
+                     <Select
+                       onValueChange={field.onChange}
+                       value={field.value}
+                       name={field.name}
+                       disabled={mikrotikServers.length === 0} // Disable if no servers
+                     >
+                      <SelectTrigger className="col-span-3" id="mikrotikServerName" aria-invalid={errors.mikrotikServerName ? "true" : "false"}>
+                        <SelectValue placeholder={mikrotikServers.length === 0 ? "No servers available" : "Select a server"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mikrotikServers.map((server) => (
+                          <SelectItem key={server.name} value={server.name}>
+                            {server.name} ({server.ipAddress})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               {errors.mikrotikServerName && <p className="col-span-4 text-right text-xs text-destructive">{errors.mikrotikServerName.message}</p>}
             </div>
             <div className="grid grid-cols-4 items-center gap-4">

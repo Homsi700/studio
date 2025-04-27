@@ -14,27 +14,76 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock user data storage (replace with secure backend storage)
-const MOCK_USER_DB: Record<string, string> = {
-    "admin": "password123",
-    "testuser": "testpass"
+// Key for storing the mock user database in localStorage
+const MOCK_DB_STORAGE_KEY = 'networkPilotMockUserDB';
+
+// Function to get the mock DB from localStorage or initialize it
+const getMockUserDB = (): Record<string, string> => {
+    if (typeof window === 'undefined') {
+        // Return default during SSR or if window is not available
+        return { "admin": "password123", "testuser": "testpass" };
+    }
+    try {
+        const storedDB = localStorage.getItem(MOCK_DB_STORAGE_KEY);
+        if (storedDB) {
+            const parsedDB = JSON.parse(storedDB);
+            // Basic validation
+            if (typeof parsedDB === 'object' && parsedDB !== null) {
+                 console.log("Loaded mock user DB from localStorage:", parsedDB);
+                 return parsedDB;
+            }
+        }
+    } catch (e) {
+        console.error("Failed to load or parse mock user DB from localStorage:", e);
+    }
+    // Default initial DB if not found or invalid
+    const initialDB = { "admin": "password123", "testuser": "testpass" };
+    try {
+         localStorage.setItem(MOCK_DB_STORAGE_KEY, JSON.stringify(initialDB));
+    } catch (e) {
+         console.error("Failed to save initial mock user DB to localStorage:", e);
+    }
+    console.log("Initialized mock user DB:", initialDB);
+    return initialDB;
 };
+
+// Function to save the mock DB to localStorage
+const saveMockUserDB = (db: Record<string, string>) => {
+    if (typeof window !== 'undefined') {
+        try {
+            localStorage.setItem(MOCK_DB_STORAGE_KEY, JSON.stringify(db));
+            console.log("Saved mock user DB to localStorage:", db);
+        } catch (e) {
+            console.error("Failed to save mock user DB to localStorage:", e);
+        }
+    }
+};
+
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | undefined>(undefined); // Start as undefined
   const [user, setUser] = useState<{ username: string } | null>(null);
+   // Initialize mock user DB from localStorage
+  const [mockUserDB, setMockUserDB] = useState<Record<string, string>>(() => getMockUserDB());
   const { toast } = useToast();
 
   // Check authentication status on initial load (e.g., from localStorage or a token)
   useEffect(() => {
-    // Simulate checking token/session storage
+    // Simulate checking token/session storage for the currently logged-in user
     const storedUser = localStorage.getItem('networkPilotUser');
     if (storedUser) {
        try {
          const parsedUser = JSON.parse(storedUser);
          if (parsedUser && parsedUser.username) {
-             setUser(parsedUser);
-             setIsAuthenticated(true);
+             // Verify if the stored user still exists in our mock DB (consistency check)
+             if (mockUserDB[parsedUser.username]) {
+                setUser(parsedUser);
+                setIsAuthenticated(true);
+             } else {
+                 // User existed in localStorage but not in DB anymore (e.g., DB cleared)
+                 setIsAuthenticated(false);
+                 localStorage.removeItem('networkPilotUser'); // Clean up invalid data
+             }
          } else {
               setIsAuthenticated(false);
               localStorage.removeItem('networkPilotUser'); // Clean up invalid data
@@ -47,19 +96,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } else {
       setIsAuthenticated(false);
     }
-  }, []);
+     // Ensure mock DB is loaded on client-side mount
+     setMockUserDB(getMockUserDB());
+  }, []); // Run only once on mount
 
   const login = async (username: string, pass: string): Promise<boolean> => {
     console.log(`Attempting login for: ${username}`);
+     // Ensure the latest DB state is used
+    const currentMockDB = getMockUserDB();
+    console.log("Current Mock DB state during login:", currentMockDB);
     // Simulate API call delay
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Basic mock authentication
-    if (MOCK_USER_DB[username] && MOCK_USER_DB[username] === pass) {
+    // Basic mock authentication against the current DB state
+    if (currentMockDB[username] && currentMockDB[username] === pass) {
       const userData = { username };
       setUser(userData);
       setIsAuthenticated(true);
-      localStorage.setItem('networkPilotUser', JSON.stringify(userData)); // Persist login
+      localStorage.setItem('networkPilotUser', JSON.stringify(userData)); // Persist login session
       console.log("Login successful");
       return true;
     } else {
@@ -75,11 +129,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signup = async (username: string, pass: string): Promise<boolean> => {
      console.log(`Attempting signup for: ${username}`);
+     // Get the current state of the DB before modifying
+     const currentMockDB = getMockUserDB();
+     console.log("Current Mock DB state during signup:", currentMockDB);
+
      // Simulate API call delay
      await new Promise(resolve => setTimeout(resolve, 500));
 
      // Check if username already exists
-     if (MOCK_USER_DB[username]) {
+     if (currentMockDB[username]) {
          toast({
            title: "Signup Failed",
            description: "Username already exists.",
@@ -89,10 +147,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
          return false;
      }
 
-     // Add new user (insecure mock - replace with backend call)
-     MOCK_USER_DB[username] = pass;
+     // Add new user to the DB object
+     const updatedDB = { ...currentMockDB, [username]: pass };
+
+     // Update the state and save to localStorage
+     setMockUserDB(updatedDB);
+     saveMockUserDB(updatedDB);
+
      console.log("Signup successful, user added to mock DB:", username);
-     // Optionally log the user in directly after signup, or require them to login
      // For this example, we require login after signup.
      return true;
   };
@@ -102,7 +164,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     console.log("Logging out user");
     setUser(null);
     setIsAuthenticated(false);
-    localStorage.removeItem('networkPilotUser'); // Clear persisted login
+    localStorage.removeItem('networkPilotUser'); // Clear persisted login session
      toast({
        title: "Logged Out",
        description: "You have been successfully logged out.",

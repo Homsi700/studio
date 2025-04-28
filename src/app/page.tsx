@@ -279,14 +279,17 @@ export default function Dashboard() {
             }
         };
 
-        ws.current.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            toast({ title: "Real-time Connection Error", description: "Could not maintain live updates.", variant: "destructive" });
+        ws.current.onerror = (event) => {
+            // The event object itself might not contain specific error details,
+            // but logging it might provide some context (like type: 'error').
+            // Check the browser's Network tab (WS section) for connection errors.
+            console.error('WebSocket error occurred:', event);
+            toast({ title: "Real-time Connection Error", description: "Could not maintain live updates. Check console/network tab.", variant: "destructive" });
             // Consider attempting reconnect here or in onClose
         };
 
         ws.current.onclose = (event) => {
-            console.log(`WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason}`);
+            console.log(`WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason || 'No reason specified'}`);
             ws.current = null; // Clear the ref
             if (event.wasClean) {
                 console.log("WebSocket closed cleanly.");
@@ -360,6 +363,7 @@ export default function Dashboard() {
       try {
         ws.current.send(JSON.stringify(message));
         console.log("WebSocket message sent:", message);
+        return true; // Indicate success
       } catch (error) {
         console.error("Failed to send WebSocket message:", error, message);
         toast({
@@ -367,15 +371,17 @@ export default function Dashboard() {
             description: "Could not send update to server.",
             variant: "destructive",
         });
+        return false; // Indicate failure
       }
     } else {
-      console.warn("WebSocket not open. Message not sent:", message);
+      console.warn("WebSocket not open or connecting. Message not sent:", message);
       // Optionally queue the message or notify the user
        toast({
             title: "Real-time Disconnected",
             description: "Cannot send update. Check connection.",
             variant: "warning",
        });
+       return false; // Indicate failure
     }
   };
 
@@ -458,6 +464,8 @@ export default function Dashboard() {
            });
            return updatedDevices;
        });
+        // Notify backend after state update (optimistic UI)
+        sendWebSocketMessage({ type: 'device_deleted', payload: { deviceId } });
    };
 
     // Handler for restarting a device

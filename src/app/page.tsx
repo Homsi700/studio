@@ -241,36 +241,38 @@ export default function Dashboard() {
                 reconnectInterval.current = null;
             }
             // Optionally send an initial message (e.g., authentication token or subscription request)
-            // ws.current?.send(JSON.stringify({ type: 'authenticate', token: 'your_token' }));
+            // if (ws.current?.readyState === WebSocket.OPEN) {
+            //     ws.current?.send(JSON.stringify({ type: 'authenticate', token: 'your_token' }));
+            // }
         };
 
         ws.current.onmessage = (event) => {
             try {
-                const messageData = JSON.parse(event.data as string); // Assume JSON data for now
-                console.log('WebSocket message received:', messageData);
-
-                // --- Handle Different Message Types ---
-                if (messageData.type === 'device_status_update' && messageData.payload) {
-                    const { deviceId, status } = messageData.payload;
-                    if (deviceId && status) {
-                        console.log(`Updating status for ${deviceId}`);
-                        setDeviceStatuses(prev => ({ ...prev, [deviceId]: status }));
-                    }
-                } else if (messageData.type === 'user_list_update' && messageData.payload) {
-                    console.log('Received user list update via WebSocket.');
-                    setPppoeUsers(messageData.payload); // Update the user list directly
-                } else if (messageData.type === 'trigger_user_refresh') {
-                    console.log('WebSocket triggered user refresh.');
-                    fetchAllMikrotikUsers(false); // Refresh users without loading indicator
-                } else if (messageData.type === 'alert' && messageData.payload) {
-                    // Display alerts from the backend
-                    toast({
-                        title: messageData.payload.title || "Network Alert",
-                        description: messageData.payload.description,
-                        variant: messageData.payload.variant || "default", // e.g., 'destructive'
-                    });
+                 // Check if data is Blob, read it as text
+                if (event.data instanceof Blob) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                         try {
+                            const messageData = JSON.parse(reader.result as string);
+                             console.log('WebSocket message received (Blob):', messageData);
+                             handleWebSocketMessage(messageData);
+                         } catch (error) {
+                            console.error('Error parsing WebSocket Blob message:', error, 'Data:', reader.result);
+                         }
+                    };
+                    reader.onerror = (error) => {
+                        console.error('Error reading WebSocket Blob:', error);
+                    };
+                    reader.readAsText(event.data);
+                } else if (typeof event.data === 'string') {
+                    // Handle string data directly
+                    const messageData = JSON.parse(event.data);
+                     console.log('WebSocket message received (String):', messageData);
+                     handleWebSocketMessage(messageData);
+                } else {
+                     console.warn('Received unexpected WebSocket message type:', typeof event.data);
                 }
-                // Add more message types as needed (e.g., specific user logged in/out)
+
 
             } catch (error) {
                 console.error('Error processing WebSocket message:', error, 'Data:', event.data);
@@ -304,6 +306,33 @@ export default function Dashboard() {
 
     }, [isAuthenticated, toast, fetchAllMikrotikUsers]); // Add dependencies
 
+    // Helper function to process parsed WebSocket message data
+    const handleWebSocketMessage = (messageData: any) => {
+         // --- Handle Different Message Types ---
+        if (messageData.type === 'device_status_update' && messageData.payload) {
+            const { deviceId, status } = messageData.payload;
+            if (deviceId && status) {
+                console.log(`Updating status for ${deviceId}`);
+                setDeviceStatuses(prev => ({ ...prev, [deviceId]: status }));
+            }
+        } else if (messageData.type === 'user_list_update' && messageData.payload) {
+            console.log('Received user list update via WebSocket.');
+            setPppoeUsers(messageData.payload); // Update the user list directly
+        } else if (messageData.type === 'trigger_user_refresh') {
+            console.log('WebSocket triggered user refresh.');
+            fetchAllMikrotikUsers(false); // Refresh users without loading indicator
+        } else if (messageData.type === 'alert' && messageData.payload) {
+            // Display alerts from the backend
+            toast({
+                title: messageData.payload.title || "Network Alert",
+                description: messageData.payload.description,
+                variant: messageData.payload.variant || "default", // e.g., 'destructive'
+            });
+        }
+        // Add more message types as needed (e.g., specific user logged in/out)
+    };
+
+
     // Effect to manage WebSocket connection lifecycle
     React.useEffect(() => {
         if (isAuthenticated && devices.length > 0) {
@@ -325,6 +354,30 @@ export default function Dashboard() {
         };
     }, [isAuthenticated, devices, connectWebSocket]); // Connect when authenticated and devices are loaded
 
+  // --- Helper function to safely send WebSocket messages ---
+  const sendWebSocketMessage = (message: object) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      try {
+        ws.current.send(JSON.stringify(message));
+        console.log("WebSocket message sent:", message);
+      } catch (error) {
+        console.error("Failed to send WebSocket message:", error, message);
+        toast({
+            title: "Communication Error",
+            description: "Could not send update to server.",
+            variant: "destructive",
+        });
+      }
+    } else {
+      console.warn("WebSocket not open. Message not sent:", message);
+      // Optionally queue the message or notify the user
+       toast({
+            title: "Real-time Disconnected",
+            description: "Cannot send update. Check connection.",
+            variant: "warning",
+       });
+    }
+  };
 
 
   // Handlers to add new devices (will update state and trigger refetch)
@@ -334,7 +387,7 @@ export default function Dashboard() {
       // Optionally trigger an immediate status fetch for the new device or rely on next poll/WS update
       // fetchSingleDeviceStatus(newDevice);
       // Send update via WebSocket if available
-      ws.current?.send(JSON.stringify({ type: 'device_added', payload: newDevice }));
+      sendWebSocketMessage({ type: 'device_added', payload: newDevice });
   };
 
   const handleAddTower = (newTowerData: Omit<Mimosa | Ubnt, 'type'>, type: 'mimosa' | 'ubnt') => {
@@ -342,7 +395,7 @@ export default function Dashboard() {
     setDevices(prevDevices => [...prevDevices, newDevice]);
     // Optionally trigger an immediate status fetch for the new device
     // fetchSingleDeviceStatus(newDevice);
-    ws.current?.send(JSON.stringify({ type: 'device_added', payload: newDevice }));
+    sendWebSocketMessage({ type: 'device_added', payload: newDevice });
   };
 
    // Handler for adding a PPPoE User via the dialog
@@ -357,7 +410,7 @@ export default function Dashboard() {
            toast({ title: "Success", description: `User ${payload.username} added to ${serverName}.` });
             fetchAllMikrotikUsers(false); // Refresh user list after adding
             // Notify backend via WebSocket
-            ws.current?.send(JSON.stringify({ type: 'user_added', payload: { serverName, username: payload.username } }));
+            sendWebSocketMessage({ type: 'user_added', payload: { serverName, username: payload.username } });
            return true;
        } catch (error) {
             toast({
@@ -383,7 +436,7 @@ export default function Dashboard() {
        // TODO: Add API call here to delete the device from the backend database
        // try {
        //   await deleteDeviceFromDB(deviceId); // Replace with your actual API call
-       //   ws.current?.send(JSON.stringify({ type: 'device_deleted', payload: { deviceId } })); // Notify backend
+       //   sendWebSocketMessage({ type: 'device_deleted', payload: { deviceId } }); // Notify backend
        // } catch (error) { ... }
 
        setDevices(prevDevices => {
@@ -419,10 +472,10 @@ export default function Dashboard() {
              if (device.type === 'mikrotik') {
                  success = await restartMikrotikServer(device.ipAddress);
              } else if (device.type === 'mimosa' || device.type === 'ubnt') {
-                 success = await restartTowerDevice(device.ipAddress, device.type as 'Mimosa' | 'UBNT'); // Cast needed?
+                 success = await restartTowerDevice(device.ipAddress, device.type as 'mimosa' | 'ubnt'); // Updated cast
              }
             // Notify backend via WS if using it for commands too
-            // ws.current?.send(JSON.stringify({ type: 'restart_device', payload: { deviceId } }));
+            sendWebSocketMessage({ type: 'restart_device', payload: { deviceId } });
 
             if (success) {
                 toast({ title: "Restart Initiated", description: `${device.name} is restarting. Status will update shortly.` });
@@ -467,7 +520,7 @@ export default function Dashboard() {
                 // Success toast is handled in the UserListCard after this promise resolves
                  fetchAllMikrotikUsers(false); // Refresh user list immediately after action
                  // Notify backend via WebSocket about the user action
-                 ws.current?.send(JSON.stringify({ type: 'user_action', payload: { action, username, serverName } }));
+                 sendWebSocketMessage({ type: 'user_action', payload: { action, username, serverName } });
             }
             return true;
         } catch (error) {
@@ -571,5 +624,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
-          

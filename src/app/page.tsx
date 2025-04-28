@@ -280,16 +280,15 @@ export default function Dashboard() {
         };
 
         ws.current.onerror = (event) => {
-            // The event object itself might not contain specific error details,
-            // but logging it might provide some context (like type: 'error').
-            // Check the browser's Network tab (WS section) for connection errors.
-            console.error('WebSocket error occurred:', event);
-            toast({ title: "Real-time Connection Error", description: "Could not maintain live updates. Check console/network tab.", variant: "destructive" });
+            // The generic Event object often lacks details. Check Network tab for specifics.
+            // Logging the event might show `type: 'error'`, but little else.
+            console.error('WebSocket error occurred. Check browser Network tab (WS) for details. Event:', event);
+            toast({ title: "Real-time Connection Error", description: "Could not establish or maintain live updates. See console/network tab.", variant: "destructive" });
             // Consider attempting reconnect here or in onClose
         };
 
         ws.current.onclose = (event) => {
-            console.log(`WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason || 'No reason specified'}`);
+            console.log(`WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason || 'No reason specified'}, Clean: ${event.wasClean}`);
             ws.current = null; // Clear the ref
             if (event.wasClean) {
                 console.log("WebSocket closed cleanly.");
@@ -374,7 +373,7 @@ export default function Dashboard() {
         return false; // Indicate failure
       }
     } else {
-      console.warn("WebSocket not open or connecting. Message not sent:", message);
+      console.warn(`WebSocket not open (state: ${ws.current?.readyState}). Message not sent:`, message);
       // Optionally queue the message or notify the user
        toast({
             title: "Real-time Disconnected",
@@ -528,7 +527,13 @@ export default function Dashboard() {
                 // Success toast is handled in the UserListCard after this promise resolves
                  fetchAllMikrotikUsers(false); // Refresh user list immediately after action
                  // Notify backend via WebSocket about the user action
-                 sendWebSocketMessage({ type: 'user_action', payload: { action, username, serverName } });
+                 // Check WebSocket state before sending
+                 if (ws.current?.readyState === WebSocket.OPEN) {
+                     sendWebSocketMessage({ type: 'user_action', payload: { action, username, serverName } });
+                 } else {
+                      console.warn("WebSocket not open when trying to send user action notification.");
+                      // Optionally inform user that real-time update might be delayed
+                 }
             }
             return true;
         } catch (error) {

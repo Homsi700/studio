@@ -283,7 +283,8 @@ export default function Dashboard() {
             // The generic Event object often lacks details. Check Network tab for specifics.
             // Logging the event might show `type: 'error'`, but little else.
             console.error('WebSocket error occurred. Check browser Network tab (WS) for details. Event:', event);
-            toast({ title: "Real-time Connection Error", description: "Could not establish or maintain live updates. See console/network tab.", variant: "destructive" });
+            // Comment out the toast to prevent the annoying notification
+            // toast({ title: "Real-time Connection Error", description: "Could not establish or maintain live updates. See console/network tab.", variant: "destructive" });
             // Consider attempting reconnect here or in onClose
         };
 
@@ -294,7 +295,8 @@ export default function Dashboard() {
                 console.log("WebSocket closed cleanly.");
             } else {
                 console.error('WebSocket connection died unexpectedly.');
-                toast({ title: "Real-time Connection Lost", description: "Attempting to reconnect...", variant: "destructive" });
+                // Comment out or remove the toast for lost connection if it's also annoying
+                // toast({ title: "Real-time Connection Lost", description: "Attempting to reconnect...", variant: "destructive" });
                  // Attempt to reconnect after a delay (e.g., exponential backoff)
                  if (!reconnectInterval.current && isAuthenticated) { // Only reconnect if authenticated
                     console.log("Setting up WebSocket reconnect timer...");
@@ -375,11 +377,11 @@ export default function Dashboard() {
     } else {
       console.warn(`WebSocket not open (state: ${ws.current?.readyState}). Message not sent:`, message);
       // Optionally queue the message or notify the user
-       toast({
-            title: "Real-time Disconnected",
-            description: "Cannot send update. Check connection.",
-            variant: "warning",
-       });
+       // toast({ // Commented out annoying toast
+       //      title: "Real-time Disconnected",
+       //      description: "Cannot send update. Check connection.",
+       //      variant: "warning",
+       // });
        return false; // Indicate failure
     }
   };
@@ -637,3 +639,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
+    

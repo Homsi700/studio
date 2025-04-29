@@ -1,5 +1,5 @@
 import type { PppoeUserDetails } from "@/types"; // Import detailed user type
-import { addDays, format } from 'date-fns'; // Import date-fns for renewal
+import { addDays, format, differenceInDays, parseISO } from 'date-fns'; // Import date-fns for renewal and difference calculation
 
 /**
  * Represents a Mikrotik server.
@@ -43,6 +43,7 @@ export interface PppoeUserPayload {
 
 /**
  * Asynchronously adds a PPPoE user secret to a Mikrotik server.
+ * Automatically disables the user if the duration between creation and expiry is 30 days or less.
  *
  * @param mikrotik The Mikrotik server to add the user to.
  * @param userPayload The PPPoE user data matching API parameters.
@@ -53,6 +54,9 @@ export interface PppoeUserPayload {
 export async function addPppoeUser(mikrotik: Mikrotik, userPayload: PppoeUserPayload, expiryDate?: string): Promise<void> {
   console.log(`SERVICE: Adding user ${userPayload.username} to Mikrotik ${mikrotik.name} (${mikrotik.ipAddress})`);
   console.log("Payload:", userPayload);
+
+  const registrationDate = new Date(); // User is created now
+  const registrationDateString = format(registrationDate, 'yyyy-MM-dd');
 
   // Construct comment with expiry if provided
    let comment = userPayload.comment || '';
@@ -65,6 +69,7 @@ export async function addPppoeUser(mikrotik: Mikrotik, userPayload: PppoeUserPay
 
   // TODO: Implement actual API call to Mikrotik `/ppp secret add`
   // Send `finalPayload` (including the comment with expiry)
+  // This API call should happen *before* the disable check, ideally returning the ID or confirming success.
   /*
   try {
     const response = await fetch(`/api/mikrotik/${mikrotik.ipAddress}/ppp/secret`, { // Example API endpoint
@@ -79,15 +84,15 @@ export async function addPppoeUser(mikrotik: Mikrotik, userPayload: PppoeUserPay
         // Add other fields like localAddress, remoteAddress if needed
       }),
     });
-    if (!response.ok) { throw new Error(`Mikrotik API error (${response.status})`); }
+    if (!response.ok) { throw new Error(`Mikrotik API error adding user (${response.status})`); }
     console.log(`SERVICE: User ${userPayload.username} added successfully via API.`);
   } catch (error) {
     console.error(`SERVICE: API Error adding PPPoE user ${userPayload.username}:`, error);
-    throw error;
+    throw error; // Re-throw to be caught by the caller
   }
   */
 
-  // Simulate success for now
+  // Simulate API success for now
   await new Promise(resolve => setTimeout(resolve, 500));
    // Simulate potential failure
    if (userPayload.username === 'failme') {
@@ -95,21 +100,46 @@ export async function addPppoeUser(mikrotik: Mikrotik, userPayload: PppoeUserPay
        throw new Error(`Simulated API error: Could not add user '${userPayload.username}'.`);
    }
 
-    // Update mock data if necessary (for local testing without backend)
+   // --- Automatic Disabling Check ---
+   let isDisabled = false;
+   if (expiryDate) {
+       try {
+           const expiry = parseISO(expiryDate);
+           const durationDays = differenceInDays(expiry, registrationDate);
+           console.log(`SERVICE: User ${userPayload.username} duration: ${durationDays} days.`);
+           if (durationDays <= 30) {
+               console.warn(`SERVICE: User ${userPayload.username} has a duration of ${durationDays} days (<= 30). Disabling automatically.`);
+               // Ideally, the add API would support adding as disabled,
+               // otherwise, make a second call to disable.
+               await disablePppoeUser(mikrotik, userPayload.username); // Call disable function
+               isDisabled = true;
+           }
+       } catch (e) {
+           console.error(`SERVICE: Could not parse expiry date "${expiryDate}" for automatic disabling check.`, e);
+           // Decide if this should throw an error or just log
+       }
+   }
+
+    // --- Update mock data (including disabled status) ---
+    // This should reflect the state *after* both add and potential disable calls complete.
     const newUserDetail: PppoeUserDetails = {
        username: userPayload.username,
        serverName: mikrotik.name,
        status: 'offline', // New users start offline
        speed: userPayload.profile,
-       registrationDate: format(new Date(), 'yyyy-MM-dd'),
+       registrationDate: registrationDateString,
        expiryDate: expiryDate || undefined,
-       disabled: false, // New users are enabled by default
+       disabled: isDisabled, // Reflect the calculated disabled state
        comment: finalPayload.comment
     };
-    // Add to mock data (ensure MOCK_USERS is mutable)
-    MOCK_USERS.push(newUserDetail);
+    // Ensure MOCK_USERS exists and add the new user
+    if (typeof MOCK_USERS !== 'undefined') {
+        MOCK_USERS.push(newUserDetail);
+    } else {
+        console.error("MOCK_USERS is not defined. Cannot add user to mock data.");
+    }
 
-  console.log(`SERVICE: User ${userPayload.username} added successfully (simulation).`);
+  console.log(`SERVICE: User ${userPayload.username} added (simulation). Disabled: ${isDisabled}`);
 }
 
 /**
@@ -123,14 +153,19 @@ export async function addPppoeUser(mikrotik: Mikrotik, userPayload: PppoeUserPay
 export async function enablePppoeUser(mikrotik: Mikrotik, username: string): Promise<void> {
     console.log(`SERVICE: Enabling user ${username} on Mikrotik ${mikrotik.name}`);
     // TODO: Implement actual API call: `/ppp secret enable [find name=username]`
+    // The backend API needs to receive the mikrotik details (ip, credentials) and username.
     /*
     try {
-        const response = await fetch(`/api/mikrotik/${mikrotik.ipAddress}/ppp/secret/enable`, { // Example API endpoint
+        const response = await fetch(`/api/mikrotik/action/enableUser`, { // Example consolidated API endpoint
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }, // Removed inline comment
-            body: JSON.stringify({ name: username }), // Send username to identify the secret
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                serverIp: mikrotik.ipAddress,
+                // Include auth details securely if needed by backend
+                username: username
+            }),
         });
-        if (!response.ok) { throw new Error(`Mikrotik API error (${response.status})`); }
+        if (!response.ok) { throw new Error(`Mikrotik API error enabling user (${response.status})`); }
         console.log(`SERVICE: User ${username} enabled successfully via API.`);
     } catch (error) {
         console.error(`SERVICE: API Error enabling user ${username}:`, error);
@@ -161,14 +196,19 @@ export async function enablePppoeUser(mikrotik: Mikrotik, username: string): Pro
 export async function disablePppoeUser(mikrotik: Mikrotik, username: string): Promise<void> {
     console.log(`SERVICE: Disabling user ${username} on Mikrotik ${mikrotik.name}`);
     // TODO: Implement actual API call: `/ppp secret disable [find name=username]`
+    // The backend API needs to receive the mikrotik details (ip, credentials) and username.
      /*
     try {
-        const response = await fetch(`/api/mikrotik/${mikrotik.ipAddress}/ppp/secret/disable`, { // Example API endpoint
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }, // Removed inline comment
-            body: JSON.stringify({ name: username }), // Send username to identify the secret
+        const response = await fetch(`/api/mikrotik/action/disableUser`, { // Example consolidated API endpoint
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({
+                 serverIp: mikrotik.ipAddress,
+                 // Include auth details securely if needed by backend
+                 username: username
+             }),
         });
-        if (!response.ok) { throw new Error(`Mikrotik API error (${response.status})`); }
+        if (!response.ok) { throw new Error(`Mikrotik API error disabling user (${response.status})`); }
         console.log(`SERVICE: User ${username} disabled successfully via API.`);
     } catch (error) {
         console.error(`SERVICE: API Error disabling user ${username}:`, error);
@@ -187,7 +227,8 @@ export async function disablePppoeUser(mikrotik: Mikrotik, username: string): Pr
         console.log(`SERVICE: User ${username} disabled in mock data.`);
     } else {
          console.warn(`SERVICE: User ${username} not found in mock data for disabling.`);
-         throw new Error(`User ${username} not found.`); // Simulate API failure
+         // Don't throw error here if called during add user flow and mock data isn't updated yet
+         // throw new Error(`User ${username} not found.`); // Simulate API failure
     }
 }
 
@@ -202,14 +243,19 @@ export async function disablePppoeUser(mikrotik: Mikrotik, username: string): Pr
 export async function deletePppoeUser(mikrotik: Mikrotik, username: string): Promise<void> {
     console.log(`SERVICE: Deleting user ${username} from Mikrotik ${mikrotik.name}`);
     // TODO: Implement actual API call: `/ppp secret remove [find name=username]`
+    // The backend API needs to receive the mikrotik details (ip, credentials) and username.
     /*
     try {
-        const response = await fetch(`/api/mikrotik/${mikrotik.ipAddress}/ppp/secret/remove`, { // Example API endpoint
+        const response = await fetch(`/api/mikrotik/action/deleteUser`, { // Example consolidated API endpoint
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }, // Removed inline comment
-            body: JSON.stringify({ name: username }), // Send username to identify the secret
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                serverIp: mikrotik.ipAddress,
+                // Include auth details securely if needed by backend
+                username: username
+            }),
         });
-        if (!response.ok) { throw new Error(`Mikrotik API error (${response.status})`); }
+        if (!response.ok) { throw new Error(`Mikrotik API error deleting user (${response.status})`); }
         console.log(`SERVICE: User ${username} deleted successfully via API.`);
     } catch (error) {
         console.error(`SERVICE: API Error deleting user ${username}:`, error);
@@ -232,6 +278,7 @@ export async function deletePppoeUser(mikrotik: Mikrotik, username: string): Pro
 
 /**
  * Asynchronously renews a PPPoE user's subscription (e.g., updates expiry in comment).
+ * Also ensures the user is enabled after renewal.
  *
  * @param mikrotik The Mikrotik server.
  * @param username The username of the PPPoE secret to renew.
@@ -264,32 +311,39 @@ export async function renewPppoeUser(mikrotik: Mikrotik, username: string, curre
     const newExpiryString = format(newExpiryDate, 'yyyy-MM-dd');
     console.log(`SERVICE: New expiry date for ${username}: ${newExpiryString}`);
 
-    // TODO: Implement actual API call: `/ppp secret set [find name=username] comment="Expiry:YYYY-MM-DD;[rest of comment]"`
+    // TODO: Implement actual API call to update comment and ensure user is enabled:
     // 1. Get the current comment for the user.
     // 2. Parse the comment to find existing expiry and other notes.
     // 3. Construct the new comment with the updated expiry date.
-    // 4. Make the API call to update the comment.
+    // 4. Make the API call to `/ppp secret set [find name=username] comment="newComment" disabled=no`
+    //    This single API call updates the comment and ensures the user is enabled.
     /*
      try {
-         // Step 1: Get current secret details (including comment) - hypothetical endpoint
-         const getResponse = await fetch(`/api/mikrotik/${mikrotik.ipAddress}/ppp/secret?name=${username}`);
-         if (!getResponse.ok) throw new Error('Failed to get current user details');
-         const userData = await getResponse.json(); // Assuming API returns details including comment
-         const currentComment = userData.comment || '';
+         // Step 1: Get current secret details (optional if backend handles parsing)
+         // const getResponse = await fetch(`/api/mikrotik/${mikrotik.ipAddress}/ppp/secret?name=${username}`);
+         // if (!getResponse.ok) throw new Error('Failed to get current user details');
+         // const userData = await getResponse.json();
+         // const currentComment = userData.comment || '';
 
-         // Step 2 & 3: Construct new comment
-         const commentParts = currentComment.split(';').filter(part => !part.toLowerCase().startsWith('expiry:'));
-         const newComment = `Expiry:${newExpiryString};${commentParts.join(';')}`.trim();
+         // Construct new comment (backend could also do this)
+         // const commentParts = currentComment.split(';').filter(part => !part.toLowerCase().startsWith('expiry:'));
+         // const newComment = `Expiry:${newExpiryString};${commentParts.join(';')}`.trim();
 
-         // Step 4: Update the secret
-         const setResponse = await fetch(`/api/mikrotik/${mikrotik.ipAddress}/ppp/secret/set`, { // Example endpoint
+         // Update the secret comment AND set disabled=no
+         const setResponse = await fetch(`/api/mikrotik/action/renewUser`, { // Example consolidated endpoint
              method: 'POST',
-             headers: { 'Content-Type': 'application/json' }, // Removed inline comment
-             body: JSON.stringify({ name: username, comment: newComment }),
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({
+                 serverIp: mikrotik.ipAddress,
+                 // Include auth details securely if needed by backend
+                 username: username,
+                 newExpiry: newExpiryString, // Send the new expiry date
+                 // Backend logic would fetch current comment, update it, and set disabled=no
+             }),
          });
-         if (!setResponse.ok) throw new Error(`Mikrotik API error updating comment (${setResponse.status})`);
+         if (!setResponse.ok) throw new Error(`Mikrotik API error renewing user (${setResponse.status})`);
 
-         console.log(`SERVICE: User ${username} expiry updated successfully via API.`);
+         console.log(`SERVICE: User ${username} renewal and enable successful via API.`);
          return newExpiryString; // Return the calculated new expiry date
 
      } catch (error) {
@@ -309,7 +363,7 @@ export async function renewPppoeUser(mikrotik: Mikrotik, username: string, curre
 
          MOCK_USERS[userIndex].expiryDate = newExpiryString;
          MOCK_USERS[userIndex].comment = newComment;
-         MOCK_USERS[userIndex].disabled = false; // Ensure user is enabled on renewal
+         MOCK_USERS[userIndex].disabled = false; // Ensure user is enabled on renewal in mock data
          console.log(`SERVICE: User ${username} renewed in mock data. New expiry: ${newExpiryString}`);
           return newExpiryString;
      } else {
@@ -368,10 +422,10 @@ export async function getMikrotikUsers(mikrotik: Mikrotik): Promise<PppoeUserDet
 
             return {
                 ...userSecret,
-                status: isActive ? 'online' : 'offline',
-                ipAddress: isActive ? isActive.address : undefined,
-                macAddress: isActive ? isActive['caller-id'] : undefined, // Mikrotik often uses 'caller-id' for MAC
-                uptime: isActive ? isActive.uptime : undefined,
+                status: isActive && !userSecret.disabled ? 'online' : 'offline', // Consider disabled status for online state
+                ipAddress: isActive && !userSecret.disabled ? isActive.address : undefined,
+                macAddress: isActive && !userSecret.disabled ? isActive['caller-id'] : undefined, // Mikrotik often uses 'caller-id' for MAC
+                uptime: isActive && !userSecret.disabled ? isActive.uptime : undefined,
                 expiryDate: expiryDate, // Use potentially updated expiry
                 disabled: userSecret.disabled ?? false, // Default to false if undefined
             };
@@ -433,6 +487,19 @@ export let MOCK_USERS: PppoeUserDetails[] = [
         disabled: true, // Manually disabled
         comment: "Expiry:2025-03-01;Admin Disabled",
     },
+    // Add a user for testing the 30-day auto-disable feature
+     {
+        username: 'short_term_user',
+        serverName: 'Main Router',
+        status: 'offline',
+        speed: '2M/1M',
+        // Dates will be set dynamically when added via UI, but simulate the initial state
+        registrationDate: format(new Date(), 'yyyy-MM-dd'), // Example: added today
+        // expiryDate will be set during add, e.g., 15 days from now
+        expiryDate: format(addDays(new Date(), 15), 'yyyy-MM-dd'), // Expires in 15 days
+        disabled: true, // Should be added as disabled
+        comment: `Expiry:${format(addDays(new Date(), 15), 'yyyy-MM-dd')};Auto-Disabled`,
+    },
 ];
 
 // Represents data typically retrieved from `/ppp active print`
@@ -440,5 +507,5 @@ export let MOCK_USERS: PppoeUserDetails[] = [
 const MOCK_ACTIVE_CONNECTIONS = [
     { name: 'user1', service: 'pppoe', address: '10.10.10.101', uptime: '3d 4h 15m', 'caller-id': '00:11:22:33:44:55', serverName: 'Main Router' },
     { name: 'test_user', service: 'pppoe', address: '10.20.20.201', uptime: '0h 55m', 'caller-id': 'AA:BB:CC:DD:EE:FF', serverName: 'Branch Router' },
-    // 'customer_xyz', 'expired_user', 'disabled_user' are not in active connections as they are offline/disabled
+    // 'customer_xyz', 'expired_user', 'disabled_user', 'short_term_user' are not in active connections as they are offline/disabled
 ];

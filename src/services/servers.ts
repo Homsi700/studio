@@ -14,47 +14,87 @@ interface ServerData {
 
 /**
  * Asynchronously adds a new server (typically Mikrotik) to the system.
- * Placeholder function: Should verify connection using credentials and save details.
+ * Placeholder function: Should verify connection using credentials and save details via a backend API.
  *
  * @param serverData The data for the new server, including credentials and type.
  * @returns A promise that resolves to true if the server was added successfully, false otherwise.
- * @throws If the connection verification fails or the save operation fails.
+ * @throws If the API call to the backend fails.
  */
 export async function addServer(serverData: ServerData): Promise<boolean> {
   console.log(`SERVICE: Attempting to add server: ${serverData.name} (${serverData.ipAddress})`);
   console.log("Server Data:", serverData);
 
-  // TODO: Implement actual API call to the backend/Python service
-  // 1. The backend service should receive `serverData`.
-  // 2. It should attempt to connect to `serverData.ipAddress` using `serverData.username` and `serverData.password`.
-  //    - Use a secure method (e.g., Mikrotik API library over SSH or API-SSL).
-  // 3. If connection is successful:
-  //    - Store the server details (name, ip, type, defaultSpeed, encrypted credentials or token) in the database.
-  //    - Return success (e.g., HTTP 201 Created).
-  // 4. If connection fails or storage fails:
-  //    - Return an error (e.g., HTTP 400 Bad Request or 500 Internal Server Error) with a meaningful message.
+  // TODO: Implement actual API call to the backend service
+  // The backend service should:
+  // 1. Receive `serverData`.
+  // 2. Securely attempt to connect to `serverData.ipAddress` using `serverData.username` and `serverData.password`.
+  // 3. If connection is successful, store server details (name, ip, type, defaultSpeed, encrypted credentials/token) in a database.
+  // 4. Return success (e.g., HTTP 201 Created or { success: true }).
+  // 5. If connection or storage fails, return an error (e.g., HTTP 400/500 or { success: false, message: '...' }).
 
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  try {
+    /*
+    const response = await fetch('/api/servers', { // Example backend API endpoint
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(serverData),
+    });
 
-   // Simulate potential failure based on name (for testing)
-   if (serverData.name.toLowerCase().includes("fail")) {
-       console.error(`SERVICE: Simulated failure adding server ${serverData.name}`);
-       // In a real scenario, the backend would return an error status/message
-       // throw new Error("Simulated connection failure to server.");
-       return false; // Indicate failure
-   }
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to add server and parse error.' }));
+        console.error(`SERVICE: Failed to add server ${serverData.name}. Status: ${response.status}`, errorData);
+        throw new Error(errorData.message || `Failed to add server ${serverData.name}`);
+    }
 
-  console.log("SERVICE: Server added successfully (simulation).");
-  return true; // Placeholder success
+    const result = await response.json(); // Assuming backend returns { success: true } or similar
+    console.log("SERVICE: Server added successfully via API (simulation).");
+    return result.success; // Or simply return true if response.ok implies success
+    */
+    console.log("SERVICE: Server add API call simulated successfully.");
+    return true; // Placeholder success
+
+  } catch (error) {
+    console.error(`SERVICE: Error calling backend API to add server ${serverData.name}:`, error);
+    // Ensure the error is re-thrown so the UI can catch it (e.g., show a toast)
+    throw error;
+  }
 }
 
-// Add other server management functions here (e.g., deleteServer, updateServer, restartServer)
-// Example placeholder for restarting:
+/**
+ * Asynchronously restarts a Mikrotik server via a backend API call.
+ *
+ * @param serverIp The IP address of the server to restart.
+ * @returns A promise that resolves to true if the restart command was successfully sent, false otherwise.
+ * @throws If the API call to the backend fails.
+ */
 export async function restartMikrotikServer(serverIp: string): Promise<boolean> {
     console.log(`SERVICE: Attempting to restart server ${serverIp}`);
-     // TODO: Implement backend API call to trigger /system reboot on the Mikrotik
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    console.log(`SERVICE: Restart command sent to ${serverIp} (simulation).`);
-    return true;
+
+    // TODO: Implement backend API call to trigger /system reboot on the Mikrotik.
+    // The backend needs the server IP and potentially credentials (handled securely).
+    try {
+        /*
+        const response = await fetch(`/api/servers/restart`, { // Example backend endpoint
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ serverIp: serverIp }), // Pass necessary info
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Failed to send restart command.' }));
+            console.error(`SERVICE: Failed to restart server ${serverIp}. Status: ${response.status}`, errorData);
+            throw new Error(errorData.message || `Failed to restart server ${serverIp}`);
+        }
+
+        const result = await response.json();
+        console.log(`SERVICE: Restart command sent to ${serverIp} successfully via API (simulation).`);
+        return result.success; // Assuming backend confirms command sent
+        */
+        console.log(`SERVICE: Restart command API call simulated for ${serverIp}.`);
+        return true; // Placeholder success
+
+    } catch (error) {
+        console.error(`SERVICE: Error calling backend API to restart server ${serverIp}:`, error);
+        throw error;
+    }
 }

@@ -18,49 +18,86 @@ interface TowerData {
 }
 
 /**
- * Asynchronously adds a new tower (Mimosa or UBNT) to the system.
+ * Asynchronously adds a new tower (Mimosa or UBNT) to the system via a backend API call.
  * Placeholder function: Should verify connection and save details.
  *
  * @param towerData The data for the new tower, including credentials and configuration.
  * @returns A promise that resolves to true if the tower was added successfully, false otherwise.
- * @throws If the connection verification fails or the save operation fails.
+ * @throws If the API call to the backend fails.
  */
 export async function addTower(towerData: TowerData): Promise<boolean> {
   console.log(`SERVICE: Attempting to add tower: ${towerData.name} (${towerData.ipAddress}) - Type: ${towerData.type}`);
   console.log("Tower Data:", towerData);
 
-  // TODO: Implement actual API call to the backend/Python service
+  // TODO: Implement actual API call to the backend service
   // 1. Backend receives `towerData`.
-  // 2. Backend attempts connection to `towerData.ipAddress` using credentials for the specific `towerData.type` (Mimosa/UBNT API).
-  // 3. If connection successful:
-  //    - Store tower details (name, ip, type, linkedServerName, thresholds, speed, towerType, encrypted credentials/token) in the database.
-  //    - Return success (e.g., HTTP 201 Created).
-  // 4. If connection/storage fails:
-  //    - Return error (e.g., HTTP 400/500) with a message.
+  // 2. Backend attempts connection to `towerData.ipAddress` using credentials for the specific `towerData.type`.
+  // 3. If connection successful, store tower details in the database.
+  // 4. Return success or failure based on the outcome.
 
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  try {
+    /*
+    const response = await fetch('/api/towers', { // Example backend API endpoint
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(towerData),
+    });
 
-   // Simulate potential failure based on name (for testing)
-   if (towerData.name.toLowerCase().includes("fail")) {
-       console.error(`SERVICE: Simulated failure adding tower ${towerData.name}`);
-       // throw new Error("Simulated connection failure to tower.");
-       return false; // Indicate failure
-   }
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to add tower and parse error.' }));
+        console.error(`SERVICE: Failed to add tower ${towerData.name}. Status: ${response.status}`, errorData);
+        throw new Error(errorData.message || `Failed to add tower ${towerData.name}`);
+    }
 
-  console.log("SERVICE: Tower added successfully (simulation).");
-  return true; // Placeholder success
+    const result = await response.json();
+    console.log("SERVICE: Tower added successfully via API (simulation).");
+    return result.success;
+    */
+    console.log("SERVICE: Tower add API call simulated successfully.");
+    return true; // Placeholder success
+
+  } catch (error) {
+    console.error(`SERVICE: Error calling backend API to add tower ${towerData.name}:`, error);
+    throw error;
+  }
 }
 
-// Add other tower management functions here (e.g., deleteTower, updateTower, restartTower, changeFrequency)
-
-// Example placeholder for restarting a tower:
+/**
+ * Asynchronously restarts a tower device (Mimosa or UBNT) via a backend API call.
+ *
+ * @param towerIp The IP address of the tower to restart.
+ * @param towerType The type of the tower ('mimosa' or 'ubnt').
+ * @returns A promise that resolves to true if the restart command was successfully sent, false otherwise.
+ * @throws If the API call to the backend fails.
+ */
 export async function restartTowerDevice(towerIp: string, towerType: 'mimosa' | 'ubnt'): Promise<boolean> {
     console.log(`SERVICE: Attempting to restart ${towerType} tower ${towerIp}`);
-     // TODO: Implement backend API call to trigger reboot command via respective API
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    console.log(`SERVICE: Restart command sent to ${towerIp} (simulation).`);
-    return true;
-}
 
-          
+    // TODO: Implement backend API call to trigger reboot command via the respective API (Mimosa/UBNT).
+    // The backend needs the tower IP, type, and potentially credentials.
+    try {
+        /*
+        const response = await fetch(`/api/towers/restart`, { // Example backend endpoint
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ towerIp: towerIp, towerType: towerType }), // Pass necessary info
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Failed to send restart command.' }));
+            console.error(`SERVICE: Failed to restart tower ${towerIp}. Status: ${response.status}`, errorData);
+            throw new Error(errorData.message || `Failed to restart tower ${towerIp}`);
+        }
+
+        const result = await response.json();
+        console.log(`SERVICE: Restart command sent to ${towerIp} successfully via API (simulation).`);
+        return result.success;
+        */
+        console.log(`SERVICE: Restart command API call simulated for ${towerIp}.`);
+        return true; // Placeholder success
+
+    } catch (error) {
+        console.error(`SERVICE: Error calling backend API to restart tower ${towerIp}:`, error);
+        throw error;
+    }
+}

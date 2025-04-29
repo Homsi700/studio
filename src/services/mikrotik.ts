@@ -1,4 +1,3 @@
-
 import type { PppoeUserDetails } from "@/types"; // Import detailed user type
 import { addDays, format, differenceInDays, parseISO } from 'date-fns'; // Import date-fns for renewal and difference calculation
 
@@ -304,14 +303,14 @@ export async function checkMikrotikConnection(mikrotik: Mikrotik): Promise<boole
                  password: mikrotik.adminPassword,
              }),
         });
-        // Simulate success specifically for the user's server details
-        if (mikrotik.ipAddress === '2.2.2.1' && mikrotik.adminUsername === 'ya' && mikrotik.adminPassword === '616' && effectiveApiPort === 6166) {
-            console.log(`SERVICE: Connection check successful via backend (simulation for 2.2.2.1:6166).`);
-            return true;
-        }
-        // Simulate failure for other cases
-        console.log(`SERVICE: Connection check failed via backend (simulation). Details: IP=${mikrotik.ipAddress}, Port=${effectiveApiPort}, User=${mikrotik.adminUsername}`);
-        return false;
+       // Simulate success specifically for the user's server details
+       if (mikrotik.ipAddress === '2.2.2.1' && mikrotik.adminUsername === 'ya' && mikrotik.adminPassword === '616' && effectiveApiPort === 6166) {
+           console.log(`SERVICE: Connection check successful via backend (simulation for 2.2.2.1:6166).`);
+           return true;
+       }
+       // Simulate failure for other cases
+       console.log(`SERVICE: Connection check failed via backend (simulation). Details: IP=${mikrotik.ipAddress}, Port=${effectiveApiPort}, User=${mikrotik.adminUsername}`);
+       return false;
 
         // Real implementation:
         // const success = response.ok;
@@ -358,5 +357,42 @@ export async function getMikrotikUsers(mikrotik: Mikrotik): Promise<PppoeUserDet
         // Return empty array on error to prevent breaking the UI, but log the error
         // throw error; // Re-throw for the UI to handle if needed
         return []; // Return empty array on failure
+    }
+}
+
+/**
+ * Asynchronously retrieves interface data from a Mikrotik server via a backend API.
+ * The backend must connect using the correct IP and API port.
+ *
+ * @param mikrotik The Mikrotik server details (including IP and optional apiPort).
+ * @returns A promise that resolves to an array of interface objects.
+ */
+export async function getMikrotikInterfaces(mikrotik: Mikrotik): Promise<any[]> {
+    const effectiveApiPort = mikrotik.apiPort || 6166;
+    console.log(`SERVICE: Fetching interfaces from Mikrotik ${mikrotik.name} (${mikrotik.ipAddress}:${effectiveApiPort})`);
+
+    try {
+        const response = await fetch(`/api/mikrotik/interfaces`, { // Example API endpoint
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                serverIp: mikrotik.ipAddress,
+                apiPort: effectiveApiPort,
+                username: mikrotik.adminUsername,
+                password: mikrotik.adminPassword,
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Backend API error fetching interfaces (${response.status})`);
+        }
+
+        const interfacesData: any[] = await response.json();
+        console.log(`SERVICE: Received ${interfacesData.length} interfaces from backend API for ${mikrotik.name}.`);
+        return interfacesData;
+
+    } catch (error) {
+        console.error(`SERVICE: Error fetching interfaces from ${mikrotik.name}:`, error);
+        return []; // Or re-throw the error, depending on desired behavior
     }
 }

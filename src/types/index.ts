@@ -8,8 +8,8 @@ export interface NetworkDeviceStatus {
   connected: boolean;
   signalStrength?: number; // Optional, only for towers
   users?: number; // Optional, only for Mikrotik servers
-  uploadSpeed?: string; // Optional, example placeholder
-  downloadSpeed?: string; // Optional, example placeholder
+  uploadSpeed?: string; // Optional, example placeholder, now potentially meaningful!
+  downloadSpeed?: string; // Optional, example placeholder, now potentially meaningful!
   alertState: AlertState; // State for visual indication (e.g., card border/glow)
 }
 

@@ -12,7 +12,7 @@ import type { Mikrotik } from '@/services/mikrotik';
 import type { Mimosa } from '@/services/mimosa';
 import type { Ubnt } from '@/services/ubnt';
 import type { NetworkDeviceStatus, AlertState, PppoeUserDetails, NetworkDevice, UserActionType } from '@/types'; // Import NetworkDevice, UserActions, UserActionType
-import { checkMikrotikConnection, getMikrotikUsers, enablePppoeUser, disablePppoeUser, renewPppoeUser, addPppoeUser, deletePppoeUser } from '@/services/mikrotik'; // Import user actions including deletePppoeUser
+import { checkMikrotikConnection, getMikrotikUsers, enablePppoeUser, disablePppoeUser, renewPppoeUser, addPppoeUser, deletePppoeUser, getMikrotikInterfaces } from '@/services/mikrotik'; // Import user actions including deletePppoeUser and getMikrotikInterfaces
 import { getMimosaSignalStrength, getMimosaTraffic } from '@/services/mimosa';
 import { getUbntSignalStrength, getUbntTraffic } from '@/services/ubnt';
 import { addServer, restartMikrotikServer } from '@/services/servers'; // Import server actions
@@ -37,7 +37,8 @@ export default function Dashboard() {
   const { toast } = useToast(); // Initialize toast hook
   const [deviceStatuses, setDeviceStatuses] = React.useState<Record<string, NetworkDeviceStatus>>({});
   const [loadingDevices, setLoadingDevices] = React.useState<boolean>(true); // Loading state for devices themselves
-  const [loadingStatuses, setLoadingStatuses] = React.useState<boolean>(false); // Loading state for device statuses
+  // Keep separate loading state for background status updates
+  const [loadingStatusesInBackground, setLoadingStatusesInBackground] = React.useState<boolean>(false);
   const [devices, setDevices] = React.useState<NetworkDevice[]>([]);
   const [pppoeUsers, setPppoeUsers] = React.useState<PppoeUserDetails[]>([]);
   const [loadingUsers, setLoadingUsers] = React.useState<boolean>(false); // Separate loading state for user list
@@ -142,9 +143,10 @@ export default function Dashboard() {
     }, [devices, isAuthenticated, toast]); // Added toast
 
     // Function to fetch statuses for all devices
-     const fetchDeviceStatuses = React.useCallback(async (showLoadingIndicator = true) => {
+     const fetchDeviceStatuses = React.useCallback(async (showBackgroundLoadingIndicator = false) => {
         if (!isAuthenticated || devices.length === 0) return;
-        if (showLoadingIndicator) setLoadingStatuses(true);
+        // Use the background loading indicator state
+        if (showBackgroundLoadingIndicator) setLoadingStatusesInBackground(true);
         const newStatuses: Record<string, NetworkDeviceStatus> = {};
 
         const results = await Promise.allSettled(
@@ -152,51 +154,77 @@ export default function Dashboard() {
                 const key = `${device.type}-${device.ipAddress}`; // Using IP as part of the key for potential duplicates
                 try {
                    let status: NetworkDeviceStatus = { connected: false, alertState: 'error' };
-                   let traffic = 0;
+                   let traffic = 0; // Used for alert state, based on download speed
 
                    if (device.type === 'mikrotik') {
-                       // Pass the full device object (including port and credentials) to check connection
                         const isConnected = await checkMikrotikConnection(device);
                         let userCount = 0;
                         let downloadSpeed = 'N/A';
                         let uploadSpeed = 'N/A';
+
                         if (isConnected) {
                             try {
                                 userCount = pppoeUsers.filter(u => u.serverName === device.name && u.status === 'online').length;
-                                // Simulate fetching live traffic (replace with actual backend call if needed)
-                                downloadSpeed = `${(Math.random() * 100 + 10).toFixed(1)} Mbps`;
-                                uploadSpeed = `${(Math.random() * 50 + 5).toFixed(1)} Mbps`;
-                                traffic = parseFloat(downloadSpeed);
+
+                                const interfaces = await getMikrotikInterfaces(device);
+                                // Find the target interface (e.g., 'ether1' or 'WAN')
+                                // Prioritize 'ether1', then 'WAN', then the first non-dynamic, non-loopback, running interface
+                                const targetInterface = interfaces.find(iface => iface.name === 'ether1' && iface.running && !iface.dynamic && iface.type !== 'loopback')
+                                                   || interfaces.find(iface => iface.name?.toLowerCase().includes('wan') && iface.running && !iface.dynamic && iface.type !== 'loopback')
+                                                   || interfaces.find(iface => iface.running && !iface.dynamic && iface.type !== 'loopback' && !iface.name?.toLowerCase().includes('bridge'));
+
+
+                                if (targetInterface) {
+                                    console.log(`Using interface '${targetInterface.name}' for Mikrotik ${device.name} speed.`);
+                                    const rxRate = parseFloat(targetInterface['rx-bits-per-second'] || '0');
+                                    const txRate = parseFloat(targetInterface['tx-bits-per-second'] || '0');
+
+                                    // Convert bits per second to Mbps
+                                    downloadSpeed = `${(rxRate / 1000000).toFixed(1)} Mbps`;
+                                    uploadSpeed = `${(txRate / 1000000).toFixed(1)} Mbps`;
+                                    traffic = parseFloat((rxRate / 1000000).toFixed(1)); // Use download speed for traffic warning
+                                } else {
+                                    console.warn(`Could not find suitable WAN interface for Mikrotik ${device.name}. Displaying N/A.`);
+                                }
+
                             } catch (detailsError) {
                                 console.error(`Error getting details for Mikrotik ${device.name}:`, detailsError);
                                 downloadSpeed = 'Error';
                                 uploadSpeed = 'Error';
                             }
                         }
-                        status = { connected: isConnected, users: userCount, downloadSpeed, uploadSpeed, alertState: !isConnected ? 'error' : (traffic > TRAFFIC_THRESHOLD_WARN ? 'warning' : 'normal') };
+                        status = {
+                            connected: isConnected,
+                            users: userCount,
+                            downloadSpeed,
+                            uploadSpeed,
+                            alertState: !isConnected ? 'error' : (traffic > TRAFFIC_THRESHOLD_WARN ? 'warning' : 'normal')
+                        };
 
                    } else if (device.type === 'mimosa' || device.type === 'ubnt') {
                         let signalStrength = -99;
                         let isConnected = false;
                         let alertState: AlertState = 'error';
+                        let towerTraffic = 0; // Separate variable for tower traffic
 
                         try {
                             // Pass credentials if needed by backend
                             signalStrength = device.type === 'mimosa'
                                 ? await getMimosaSignalStrength(device)
                                 : await getUbntSignalStrength(device);
-                            isConnected = signalStrength > -90;
+                            isConnected = signalStrength > -90; // Basic connectivity check
 
                             if (isConnected) {
-                                traffic = device.type === 'mimosa'
+                                towerTraffic = device.type === 'mimosa'
                                     ? await getMimosaTraffic(device)
                                     : await getUbntTraffic(device);
 
-                                if (signalStrength < -80) alertState = 'error';
-                                else if (traffic > TRAFFIC_THRESHOLD_WARN || signalStrength < -70) alertState = 'warning';
+                                // Determine alert state based on signal and traffic
+                                if (signalStrength < -80) alertState = 'error'; // Critical signal
+                                else if (towerTraffic > TRAFFIC_THRESHOLD_WARN || signalStrength < -70) alertState = 'warning'; // High traffic or weak signal
                                 else alertState = 'normal';
                             } else {
-                                alertState = 'error';
+                                alertState = 'error'; // Not connected
                             }
 
                         } catch (fetchError) {
@@ -204,7 +232,8 @@ export default function Dashboard() {
                              isConnected = false;
                              alertState = 'error';
                         }
-                         status = { connected: isConnected, signalStrength, alertState };
+                         // Include traffic in the status object if needed elsewhere, but alertState handles the visual
+                         status = { connected: isConnected, signalStrength, alertState, downloadSpeed: `${towerTraffic.toFixed(1)} Mbps`, uploadSpeed: 'N/A' }; // Example: show traffic as download speed
                    }
                    return { key, status };
                 } catch (error) {
@@ -221,7 +250,8 @@ export default function Dashboard() {
         });
 
         setDeviceStatuses(newStatuses);
-        if (showLoadingIndicator) setLoadingStatuses(false);
+        // Use the background loading indicator state
+        if (showBackgroundLoadingIndicator) setLoadingStatusesInBackground(false);
 
     }, [devices, isAuthenticated, pppoeUsers]); // Added pppoeUsers dependency
 
@@ -230,11 +260,13 @@ export default function Dashboard() {
     React.useEffect(() => {
         if (isAuthenticated && !loadingDevices && devices.length > 0) {
             console.log("Authenticated and devices loaded, fetching initial statuses and users.");
-            fetchDeviceStatuses(true);
-            fetchAllMikrotikUsers(true);
+            // Initial fetch doesn't show background indicator, only the main loading skeleton if needed
+            fetchDeviceStatuses(false);
+            fetchAllMikrotikUsers(true); // Keep user loading indicator
 
-            const statusIntervalId = setInterval(() => fetchDeviceStatuses(false), 60000);
-            const userIntervalId = setInterval(() => fetchAllMikrotikUsers(false), 120000);
+            // Subsequent polls show the background indicator
+            const statusIntervalId = setInterval(() => fetchDeviceStatuses(true), 60000);
+            const userIntervalId = setInterval(() => fetchAllMikrotikUsers(false), 120000); // User refresh can be less aggressive
 
             return () => {
                 console.log("Cleaning up polling intervals.");
@@ -247,9 +279,11 @@ export default function Dashboard() {
              console.log("Devices still loading, waiting to fetch data...");
         } else if (devices.length === 0) {
              console.log("No devices configured, skipping fetch.");
-             setLoadingStatuses(false);
+             // setLoadingStatuses(false); // No need for this if using background loading
              setLoadingUsers(false);
         }
+        // Ensure background loading stops if conditions are not met initially
+        setLoadingStatusesInBackground(false);
     }, [fetchDeviceStatuses, fetchAllMikrotikUsers, isAuthenticated, devices, loadingDevices]);
 
 
@@ -263,7 +297,6 @@ export default function Dashboard() {
 
         ws.current.onopen = () => {
             console.log('WebSocket connected successfully.');
-            toast({ title: "Real-time Connection", description: "Live updates enabled." });
             if (reconnectInterval.current) {
                 clearInterval(reconnectInterval.current);
                 reconnectInterval.current = null;
@@ -300,7 +333,12 @@ export default function Dashboard() {
         };
 
         ws.current.onerror = (event) => {
+            // The generic Event object often lacks details. Check Network tab for specifics.
+            // Logging the event might show `type: 'error'`, but little else.
             console.error('WebSocket error occurred. Check browser Network tab (WS) for details. Event:', event);
+            // Comment out the toast to prevent the annoying notification
+            // toast({ title: "Real-time Connection Error", description: "Could not establish or maintain live updates. See console/network tab.", variant: "destructive" });
+            // Consider attempting reconnect here or in onClose
         };
 
 
@@ -321,7 +359,7 @@ export default function Dashboard() {
             }
         };
 
-    }, [isAuthenticated, toast, fetchAllMikrotikUsers, fetchDeviceStatuses]);
+    }, [isAuthenticated, fetchAllMikrotikUsers, fetchDeviceStatuses, toast]); // Added toast to dependency array
 
     // Helper function to process parsed WebSocket message data
     const handleWebSocketMessage = (messageData: any) => {
@@ -340,7 +378,7 @@ export default function Dashboard() {
             fetchAllMikrotikUsers(false);
         } else if (messageData.type === 'trigger_status_refresh') {
              console.log('WS triggered status refresh.');
-             fetchDeviceStatuses(false);
+             fetchDeviceStatuses(true); // Use background indicator for WS triggered refresh
         } else if (messageData.type === 'alert' && messageData.payload) {
             toast({
                 title: messageData.payload.title || "Network Alert",
@@ -389,6 +427,7 @@ export default function Dashboard() {
       }
     } else {
       console.warn(`WebSocket not open (state: ${ws.current?.readyState}). Message not sent:`, message);
+       toast({ title: "Connection Issue", description: "Real-time server connection not active.", variant: "warning" });
        return false; // Indicate failure
     }
   };
@@ -413,7 +452,7 @@ export default function Dashboard() {
                };
                setDevices(prevDevices => [...prevDevices, newDeviceForUi]);
                toast({ title: "Success", description: `Server ${newServerData.name} added.` });
-               fetchDeviceStatuses(false);
+               fetchDeviceStatuses(true); // Use background indicator after adding
                sendWebSocketMessage({ type: 'device_added', payload: newDeviceForUi });
                return true;
            } else {
@@ -449,7 +488,7 @@ export default function Dashboard() {
           if (success) {
              setDevices(prevDevices => [...prevDevices, newDevice]);
              toast({ title: "Success", description: `Tower ${newDevice.name} added.` });
-             fetchDeviceStatuses(false); // Trigger status refresh
+             fetchDeviceStatuses(true); // Use background indicator
              sendWebSocketMessage({ type: 'device_added', payload: newDevice });
              return true; // Indicate success to the dialog
           } else {
@@ -482,6 +521,8 @@ export default function Dashboard() {
             const messageSent = sendWebSocketMessage({ type: 'user_added', payload: { serverName, username: payload.username } });
              if (!messageSent) {
                  console.warn("WebSocket not open when trying to send user added notification.");
+                 // Optionally show a less intrusive notification if WS fails
+                 // toast({ title: "Sync Issue", description: "Live update server not reached.", variant: "warning" });
              }
            return true;
        } catch (error) {
@@ -573,7 +614,8 @@ export default function Dashboard() {
 
             if (success) {
                 toast({ title: "Restart Initiated", description: `${device.name} is restarting. Status will update shortly.` });
-                setDeviceStatuses(prev => ({ ...prev, [deviceId]: { ...(prev[deviceId] || {}), connected: false, alertState: 'normal' } }));
+                // Optimistically set status to disconnected
+                setDeviceStatuses(prev => ({ ...prev, [deviceId]: { ...(prev[deviceId] || { alertState: 'normal'}), connected: false } }));
                 sendWebSocketMessage({ type: 'restart_device', payload: { deviceId } });
             } else {
                 throw new Error("Restart command failed or was not acknowledged by the backend.");
@@ -613,10 +655,14 @@ export default function Dashboard() {
                     console.warn("Unknown user action:", action); return false;
             }
 
-            fetchAllMikrotikUsers(false);
+             // Optimistic UI update (or wait for WebSocket confirmation)
+            // For simplicity, we'll just refresh the user list
+            fetchAllMikrotikUsers(false); // Refresh user list immediately after action
+
             const messageSent = sendWebSocketMessage({ type: 'user_action', payload: { action, username, serverName } });
              if (!messageSent) {
                  console.warn("WebSocket not open when trying to send user action notification.");
+                 // toast({ title: "Sync Issue", description: "Live update server not reached.", variant: "warning" });
              }
             return true; // Indicate success
 
@@ -634,7 +680,41 @@ export default function Dashboard() {
 
   // --- Render Logic ---
 
-  // Minimal loading indicator (only for initial auth check)
+  // Show loading skeleton only during initial device load
+  if (loadingDevices) {
+       return (
+            <div className="container mx-auto p-4 md:p-8">
+              <header className="mb-8 flex items-center justify-between">
+                <div>
+                  <Skeleton className="h-8 w-48 mb-2" />
+                  <Skeleton className="h-4 w-64" />
+                </div>
+                <div className="flex items-center space-x-2">
+                   <Skeleton className="h-10 w-10 rounded-md" />
+                   <Skeleton className="h-10 w-32 rounded-md" />
+                   <Skeleton className="h-10 w-10 rounded-md" />
+                </div>
+              </header>
+               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <div key={index} className="rounded-lg border bg-card text-card-foreground shadow-sm p-6 space-y-4">
+                       <div className="flex justify-between items-start">
+                         <Skeleton className="h-6 w-3/5" />
+                         <Skeleton className="h-5 w-1/4" />
+                       </div>
+                       <Skeleton className="h-4 w-2/5" />
+                       <div className="grid grid-cols-2 gap-4 mt-4">
+                          <Skeleton className="h-4 w-3/4" />
+                          <Skeleton className="h-4 w-3/4" />
+                       </div>
+                    </div>
+                  ))}
+               </div>
+             </div>
+       );
+   }
+
+   // Minimal loading indicator for auth check (before device loading)
    if (isAuthenticated === undefined) {
        return (
             <div className="flex h-screen items-center justify-center">
@@ -652,9 +732,15 @@ export default function Dashboard() {
           <p className="text-muted-foreground">Unified Network Management Dashboard</p>
         </div>
         <div className="flex flex-wrap items-center space-x-2">
-           {/* Manual Refresh Button */}
-           <Button variant="outline" size="icon" onClick={() => {fetchDeviceStatuses(true); fetchAllMikrotikUsers(true);}} disabled={loadingStatuses || loadingUsers} aria-label="Refresh statuses">
-             <RefreshCw className={cn("h-4 w-4", (loadingStatuses || loadingUsers) && "animate-spin")} />
+           {/* Manual Refresh Button with background loading indicator */}
+           <Button
+             variant="outline"
+             size="icon"
+             onClick={() => { fetchDeviceStatuses(true); fetchAllMikrotikUsers(true); }} // Trigger background status loading
+             disabled={loadingStatusesInBackground || loadingUsers} // Disable based on background loading and user loading
+             aria-label="Refresh statuses"
+           >
+             <RefreshCw className={cn("h-4 w-4", (loadingStatusesInBackground || loadingUsers) && "animate-spin")} />
            </Button>
           <AddUserDialog
               mikrotikServers={devices.filter(d => d.type === 'mikrotik') as (Mikrotik & {apiPort?:number})[]} // Pass Mikrotik servers with port info
@@ -677,26 +763,14 @@ export default function Dashboard() {
           {/* Device Grid (takes 2/3 width on large screens) */}
           <div className="lg:col-span-2">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {/* Skeletons shown ONLY during initial device loading */}
-                 {loadingDevices && Array.from({ length: 6 }).map((_, index) => (
-                     <Card key={`skel-${index}`} className="p-6 space-y-4">
-                         <div className="flex justify-between items-start">
-                             <Skeleton className="h-6 w-3/5" />
-                             <Skeleton className="h-5 w-1/4" />
-                         </div>
-                         <Skeleton className="h-4 w-2/5" />
-                         <div className="grid grid-cols-2 gap-4 mt-4">
-                             <Skeleton className="h-4 w-3/4" />
-                             <Skeleton className="h-4 w-3/4" />
-                         </div>
-                     </Card>
-                 ))}
+                {/* Skeletons are handled by the loadingDevices check above */}
 
-                {/* Display actual device cards when devices are loaded (statuses update in place) */}
-                {!loadingDevices && devices.map((device) => {
+                {/* Display actual device cards */}
+                {devices.map((device) => {
                     // Use a more robust key including type and IP
                     const key = `${device.type}-${device.ipAddress}`;
-                    const status = deviceStatuses[key] || { connected: false, alertState: 'error' };
+                    // Default to a safe status if not yet loaded
+                    const status = deviceStatuses[key] || { connected: false, alertState: 'error', downloadSpeed: 'N/A', uploadSpeed: 'N/A' };
                     return (
                     <DeviceCard
                         key={key}
@@ -722,7 +796,7 @@ export default function Dashboard() {
                 })}
 
                 {/* Message when no devices are configured (and not loading) */}
-                {!loadingDevices && devices.length === 0 && (
+                {devices.length === 0 && (
                     <Card className="md:col-span-2 xl:col-span-3 flex items-center justify-center p-10 border-dashed">
                         <p className="text-muted-foreground text-center">
                         No devices added yet. <br/> Click 'Add Server' or 'Add Tower' to get started.
@@ -746,3 +820,4 @@ export default function Dashboard() {
     </div>
   );
 }
+

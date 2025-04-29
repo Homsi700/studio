@@ -106,9 +106,8 @@ export async function addPppoeUser(mikrotik: Mikrotik, userPayload: PppoeUserPay
        disabled: false, // New users are enabled by default
        comment: finalPayload.comment
     };
-    // This is tricky without a shared state; ideally, the parent component refetches
-    // For now, just log the intention to add to mock data
-    // MOCK_USERS.push(newUserDetail); // Avoid directly modifying exported const if possible
+    // Add to mock data (ensure MOCK_USERS is mutable)
+    MOCK_USERS.push(newUserDetail);
 
   console.log(`SERVICE: User ${userPayload.username} added successfully (simulation).`);
 }
@@ -147,6 +146,7 @@ export async function enablePppoeUser(mikrotik: Mikrotik, username: string): Pro
         console.log(`SERVICE: User ${username} enabled in mock data.`);
     } else {
          console.warn(`SERVICE: User ${username} not found in mock data for enabling.`);
+         throw new Error(`User ${username} not found.`); // Simulate API failure
     }
 }
 
@@ -187,8 +187,48 @@ export async function disablePppoeUser(mikrotik: Mikrotik, username: string): Pr
         console.log(`SERVICE: User ${username} disabled in mock data.`);
     } else {
          console.warn(`SERVICE: User ${username} not found in mock data for disabling.`);
+         throw new Error(`User ${username} not found.`); // Simulate API failure
     }
 }
+
+/**
+ * Asynchronously deletes a PPPoE user secret from a Mikrotik server.
+ *
+ * @param mikrotik The Mikrotik server.
+ * @param username The username of the PPPoE secret to delete.
+ * @returns A promise that resolves when the operation is complete.
+ * @throws If the API call fails.
+ */
+export async function deletePppoeUser(mikrotik: Mikrotik, username: string): Promise<void> {
+    console.log(`SERVICE: Deleting user ${username} from Mikrotik ${mikrotik.name}`);
+    // TODO: Implement actual API call: `/ppp secret remove [find name=username]`
+    /*
+    try {
+        const response = await fetch(`/api/mikrotik/${mikrotik.ipAddress}/ppp/secret/remove`, { // Example API endpoint
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }, // Removed inline comment
+            body: JSON.stringify({ name: username }), // Send username to identify the secret
+        });
+        if (!response.ok) { throw new Error(`Mikrotik API error (${response.status})`); }
+        console.log(`SERVICE: User ${username} deleted successfully via API.`);
+    } catch (error) {
+        console.error(`SERVICE: API Error deleting user ${username}:`, error);
+        throw error;
+    }
+    */
+    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
+
+    // Update mock data (remove user)
+    const initialLength = MOCK_USERS.length;
+    MOCK_USERS = MOCK_USERS.filter(u => !(u.username === username && u.serverName === mikrotik.name));
+    if (MOCK_USERS.length < initialLength) {
+        console.log(`SERVICE: User ${username} removed from mock data.`);
+    } else {
+        console.warn(`SERVICE: User ${username} not found in mock data for deletion.`);
+        throw new Error(`User ${username} not found.`); // Simulate API failure
+    }
+}
+
 
 /**
  * Asynchronously renews a PPPoE user's subscription (e.g., updates expiry in comment).
@@ -315,7 +355,7 @@ export async function getMikrotikUsers(mikrotik: Mikrotik): Promise<PppoeUserDet
 
     // Simulate combining data for users on the specified server
     return MOCK_USERS
-        .filter(user => user.serverName === mikrotik.name) // Filter secrets for this server
+        .filter(userSecret => userSecret.serverName === mikrotik.name) // Filter secrets for this server
         .map(userSecret => {
             // Simulate finding active connection (e.g., based on username and 'online' status in mock)
             const isActive = MOCK_ACTIVE_CONNECTIONS.find(
@@ -341,6 +381,7 @@ export async function getMikrotikUsers(mikrotik: Mikrotik): Promise<PppoeUserDet
 
 // --- MOCK DATA ---
 // Represents data typically retrieved from `/ppp secret print`
+// Needs to be mutable (let) to allow adding/deleting users in simulation
 export let MOCK_USERS: PppoeUserDetails[] = [
     {
         username: 'user1',
@@ -401,4 +442,3 @@ const MOCK_ACTIVE_CONNECTIONS = [
     { name: 'test_user', service: 'pppoe', address: '10.20.20.201', uptime: '0h 55m', 'caller-id': 'AA:BB:CC:DD:EE:FF', serverName: 'Branch Router' },
     // 'customer_xyz', 'expired_user', 'disabled_user' are not in active connections as they are offline/disabled
 ];
-

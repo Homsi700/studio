@@ -20,9 +20,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"; // Import DropdownMenu components
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog" // Import AlertDialog components for delete confirmation
 import { cn } from "@/lib/utils";
-import type { PppoeUserDetails, UserActions, Mikrotik } from "@/types"; // Import UserActions, Mikrotik
-import { Users, CalendarDays, Clock, Wifi, WifiOff, Gauge, Info, MoreVertical, CheckCircle, XCircle, RefreshCcw, Settings } from "lucide-react"; // Import new icons
+import type { PppoeUserDetails, UserActionType, Mikrotik, UserActions } from "@/types"; // Updated imports
+import { Users, CalendarDays, Clock, Wifi, WifiOff, Gauge, Info, MoreVertical, CheckCircle, XCircle, RefreshCcw, Settings, Trash2 } from "lucide-react"; // Import new icons
 import {
   Tooltip,
   TooltipContent,
@@ -31,13 +42,15 @@ import {
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast"; // Import useToast
 import { differenceInDays, parseISO, format } from 'date-fns'; // Import date-fns
+import { buttonVariants } from "@/components/ui/button"; // Import buttonVariants for delete button styling
 
 interface UserListCardProps {
   users: PppoeUserDetails[];
   isLoading: boolean;
   mikrotikServers: Mikrotik[]; // Pass servers to find correct one for actions
-  onUserAction: (action: keyof UserActions, username: string, serverName: string, payload?: any) => Promise<boolean>; // Consolidated action handler
+  onUserAction: (action: UserActionType, username: string, serverName: string, payload?: any) => Promise<boolean>; // Consolidated action handler with specific type
   onRefreshUsers: () => void; // Add callback to refresh user list
+  // onDeleteUser: (username: string, serverName: string) => Promise<boolean>; // Specific delete handler - integrated into onUserAction
 }
 
 
@@ -50,37 +63,61 @@ const findServerByName = (servers: Mikrotik[], name: string): Mikrotik | undefin
 export function UserListCard({ users = [], isLoading, mikrotikServers, onUserAction, onRefreshUsers }: UserListCardProps) {
     const { toast } = useToast();
     const [actionLoading, setActionLoading] = React.useState<Record<string, boolean>>({}); // Track loading state per user action
+    const [showDeleteConfirm, setShowDeleteConfirm] = React.useState<PppoeUserDetails | null>(null); // State to track which user delete confirmation is shown for
 
-    const handleAction = async (action: keyof UserActions, user: PppoeUserDetails) => {
+    const handleAction = async (action: UserActionType, user: PppoeUserDetails) => {
         const actionKey = `${action}-${user.username}-${user.serverName}`;
         setActionLoading(prev => ({ ...prev, [actionKey]: true }));
         try {
             let payload: any = undefined;
-            if (action === 'onRenewUser') {
+            if (action === 'renewUser') {
                 payload = user.expiryDate; // Pass current expiry for renewal calculation
             }
 
             const success = await onUserAction(action, user.username, user.serverName, payload);
 
             if (success) {
+                 let successMessage = '';
+                 switch (action) {
+                     case 'enableUser': successMessage = 'enabled'; break;
+                     case 'disableUser': successMessage = 'disabled'; break;
+                     case 'renewUser': successMessage = 'renewal initiated'; break;
+                     case 'deleteUser': successMessage = 'deleted'; break;
+                 }
                  toast({
                     title: "Success",
-                    description: `User ${user.username} ${action.includes('Enable') ? 'enabled' : action.includes('Disable') ? 'disabled' : 'renewal initiated'}.`,
+                    description: `User ${user.username} ${successMessage}.`,
                  });
                  onRefreshUsers(); // Refresh list after successful action
             } else {
-                 // Error toast is handled within the onUserAction promise rejection usually
+                 // Error toast is handled within the onUserAction promise rejection usually in the parent component
             }
 
         } catch (error) {
+             let actionText = '';
+             switch (action) {
+                 case 'enableUser': actionText = 'Enabling'; break;
+                 case 'disableUser': actionText = 'Disabling'; break;
+                 case 'renewUser': actionText = 'Renewing'; break;
+                 case 'deleteUser': actionText = 'Deleting'; break;
+             }
              toast({
-               title: `Error ${action.includes('Enable') ? 'Enabling' : action.includes('Disable') ? 'Disabling' : 'Renewing'} User`,
+               title: `Error ${actionText} User`,
                description: error instanceof Error ? error.message : `Failed to perform action for ${user.username}.`,
                variant: "destructive",
              });
         } finally {
             setActionLoading(prev => ({ ...prev, [actionKey]: false }));
+            if (action === 'deleteUser') {
+                 setShowDeleteConfirm(null); // Close confirmation dialog on completion
+             }
         }
+    };
+
+    const confirmDelete = () => {
+       if (showDeleteConfirm) {
+            handleAction('deleteUser', showDeleteConfirm);
+       }
     };
 
 
@@ -162,6 +199,9 @@ export function UserListCard({ users = [], isLoading, mikrotikServers, onUserAct
                  <Info className="h-10 w-10 text-muted-foreground mb-4" />
                  <p className="text-muted-foreground">No PPPoE users found.</p>
                  <p className="text-xs text-muted-foreground mt-1">Check server connections or add users.</p>
+                  <Button onClick={onRefreshUsers} variant="outline" size="sm" className="mt-4">
+                      <RefreshCcw className="mr-2 h-4 w-4"/> Refresh Users
+                  </Button>
               </div>
           ) : (
             <TooltipProvider>
@@ -181,9 +221,8 @@ export function UserListCard({ users = [], isLoading, mikrotikServers, onUserAct
                   {users.map((user) => {
                     const remainingDays = getRemainingDays(user.expiryDate);
                     const expiryColor = getExpiryColor(remainingDays);
-                    const isActionLoading = actionLoading[`enable-${user.username}-${user.serverName}`] ||
-                                             actionLoading[`disable-${user.username}-${user.serverName}`] ||
-                                             actionLoading[`renew-${user.username}-${user.serverName}`];
+                    const isAnyActionLoading = Object.keys(actionLoading).some(key => key.startsWith(`enable-${user.username}-${user.serverName}`) || key.startsWith(`disable-${user.username}-${user.serverName}`) || key.startsWith(`renew-${user.username}-${user.serverName}`) || key.startsWith(`delete-${user.username}-${user.serverName}`));
+
 
                      return (
                       <TableRow key={`${user.username}-${user.serverName}`} className={cn(user.disabled && 'opacity-50 bg-muted/30')}>
@@ -236,33 +275,63 @@ export function UserListCard({ users = [], isLoading, mikrotikServers, onUserAct
                                : remainingDays}
                         </TableCell>
                          <TableCell className="text-right">
-                             <DropdownMenu>
-                                 <DropdownMenuTrigger asChild>
-                                     <Button variant="ghost" size="icon" disabled={isActionLoading} className="h-7 w-7">
-                                        {isActionLoading ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
-                                     </Button>
-                                 </DropdownMenuTrigger>
-                                 <DropdownMenuContent align="end">
-                                     <DropdownMenuLabel>Manage User</DropdownMenuLabel>
-                                     <DropdownMenuSeparator />
-                                     {user.disabled ? (
-                                         <DropdownMenuItem onClick={() => handleAction('onEnableUser', user)}>
-                                             <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Enable Account
-                                         </DropdownMenuItem>
-                                     ) : (
-                                         <DropdownMenuItem onClick={() => handleAction('onDisableUser', user)}>
-                                             <XCircle className="mr-2 h-4 w-4 text-destructive" /> Disable Account
-                                         </DropdownMenuItem>
-                                     )}
-                                     <DropdownMenuItem onClick={() => handleAction('onRenewUser', user)}>
-                                         <RefreshCcw className="mr-2 h-4 w-4 text-blue-500" /> Renew (30 Days)
-                                     </DropdownMenuItem>
-                                     {/* Add other actions like delete, view details etc. */}
-                                      <DropdownMenuItem disabled>
-                                        <Settings className="mr-2 h-4 w-4"/> More Settings...
-                                      </DropdownMenuItem>
-                                 </DropdownMenuContent>
-                             </DropdownMenu>
+                              <AlertDialog open={showDeleteConfirm?.username === user.username && showDeleteConfirm?.serverName === user.serverName} onOpenChange={(open) => !open && setShowDeleteConfirm(null)}>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon" disabled={isAnyActionLoading} className="h-7 w-7">
+                                            {isAnyActionLoading ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}
+                                            <span className="sr-only">User Settings</span>
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuLabel>Manage User</DropdownMenuLabel>
+                                        <DropdownMenuSeparator />
+                                        {user.disabled ? (
+                                            <DropdownMenuItem onClick={() => handleAction('enableUser', user)} disabled={isAnyActionLoading}>
+                                                <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Enable Account
+                                            </DropdownMenuItem>
+                                        ) : (
+                                            <DropdownMenuItem onClick={() => handleAction('disableUser', user)} disabled={isAnyActionLoading}>
+                                                <XCircle className="mr-2 h-4 w-4 text-yellow-600" /> Disable Account
+                                            </DropdownMenuItem>
+                                        )}
+                                        <DropdownMenuItem onClick={() => handleAction('renewUser', user)} disabled={isAnyActionLoading}>
+                                            <RefreshCcw className="mr-2 h-4 w-4 text-blue-500" /> Renew (30 Days)
+                                        </DropdownMenuItem>
+                                         <DropdownMenuSeparator />
+                                         {/* Use AlertDialogTrigger within the DropdownMenuItem */}
+                                        <AlertDialogTrigger asChild>
+                                           <DropdownMenuItem
+                                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                                disabled={isAnyActionLoading}
+                                                onSelect={(e) => {
+                                                    e.preventDefault(); // Prevent closing dropdown
+                                                    setShowDeleteConfirm(user); // Set user for confirmation
+                                                }}
+                                            >
+                                                <Trash2 className="mr-2 h-4 w-4" /> Delete User
+                                            </DropdownMenuItem>
+                                        </AlertDialogTrigger>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                                {/* Confirmation Dialog Content */}
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This action cannot be undone. This will permanently delete the PPPoE user
+                                        <span className="font-semibold"> {showDeleteConfirm?.username} </span>
+                                        from the server <span className="font-semibold">{showDeleteConfirm?.serverName}</span>.
+                                    </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                    <AlertDialogCancel onClick={() => setShowDeleteConfirm(null)}>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={confirmDelete} className={buttonVariants({ variant: "destructive" })} disabled={actionLoading[`delete-${showDeleteConfirm?.username}-${showDeleteConfirm?.serverName}`]}>
+                                        {actionLoading[`delete-${showDeleteConfirm?.username}-${showDeleteConfirm?.serverName}`] ? "Deleting..." : "Delete User"}
+                                    </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                             </AlertDialog>
                          </TableCell>
                     </TableRow>
                     );

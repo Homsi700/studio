@@ -11,8 +11,8 @@ import { ThemeToggle } from '@/components/dashboard/ThemeToggle';
 import type { Mikrotik } from '@/services/mikrotik';
 import type { Mimosa } from '@/services/mimosa';
 import type { Ubnt } from '@/services/ubnt';
-import type { NetworkDeviceStatus, AlertState, PppoeUserDetails, NetworkDevice, UserActions } from '@/types'; // Import NetworkDevice, UserActions
-import { checkMikrotikConnection, getMikrotikUsers, enablePppoeUser, disablePppoeUser, renewPppoeUser, addPppoeUser } from '@/services/mikrotik'; // Import user actions
+import type { NetworkDeviceStatus, AlertState, PppoeUserDetails, NetworkDevice, UserActions, UserActionType } from '@/types'; // Import NetworkDevice, UserActions, UserActionType
+import { checkMikrotikConnection, getMikrotikUsers, enablePppoeUser, disablePppoeUser, renewPppoeUser, addPppoeUser, deletePppoeUser } from '@/services/mikrotik'; // Import user actions including deletePppoeUser
 import { getMimosaSignalStrength, getMimosaTraffic } from '@/services/mimosa';
 import { getUbntSignalStrength, getUbntTraffic } from '@/services/ubnt';
 import { addServer, restartMikrotikServer } from '@/services/servers'; // Import server actions
@@ -145,6 +145,7 @@ export default function Dashboard() {
         if (showLoading) setLoading(true); // Set loading true at the start
         const newStatuses: Record<string, NetworkDeviceStatus> = {};
 
+
         await Promise.allSettled(
         devices.map(async (device) => {
             const key = `${device.type}-${device.ipAddress}`;
@@ -157,8 +158,15 @@ export default function Dashboard() {
                 let userCount = 0;
                 if (isConnected) {
                     try {
-                        const serverUsers = await getMikrotikUsers(device);
-                        userCount = serverUsers.length;
+                        // Use the cached pppoeUsers state for count if available and recent, else fetch
+                        // This is a simplification; a better approach might involve timestamps or specific triggers
+                        if (pppoeUsers.length > 0) {
+                             userCount = pppoeUsers.filter(u => u.serverName === device.name && u.status === 'online').length;
+                        } else {
+                             // Fallback to fetching if cached data is unavailable (or considered stale)
+                             const serverUsers = await getMikrotikUsers(device);
+                             userCount = serverUsers.filter(u => u.status === 'online').length; // Count only online users
+                        }
                     } catch { userCount = 0; }
                 }
 
@@ -199,7 +207,7 @@ export default function Dashboard() {
 
         setDeviceStatuses(newStatuses);
         if (showLoading) setLoading(false); // Set loading false after all fetches complete
-    }, [devices]); // Removed fetchAllMikrotikUsers from here
+    }, [devices, pppoeUsers]); // Add pppoeUsers dependency
 
 
     // Fetch initial data and set up polling intervals (as fallback)
@@ -504,7 +512,7 @@ export default function Dashboard() {
     };
 
      // Consolidated handler for user actions from UserListCard
-     const handleUserAction = async (action: keyof UserActions, username: string, serverName: string, payload?: any): Promise<boolean> => {
+     const handleUserAction = async (action: UserActionType, username: string, serverName: string, payload?: any): Promise<boolean> => {
         const server = findServerByName(serverName);
         if (!server) {
             toast({ title: "Error", description: `Server '${serverName}' not found for user action.`, variant: "destructive" });
@@ -515,12 +523,14 @@ export default function Dashboard() {
         try {
             // Perform the action using the service function
             switch (action) {
-                case 'onEnableUser':
+                case 'enableUser':
                     await enablePppoeUser(server, username); success = true; break;
-                case 'onDisableUser':
+                case 'disableUser':
                     await disablePppoeUser(server, username); success = true; break;
-                case 'onRenewUser':
+                case 'renewUser':
                     await renewPppoeUser(server, username, payload as string | undefined); success = true; break; // Payload is current expiry
+                case 'deleteUser':
+                    await deletePppoeUser(server, username); success = true; break; // Handle delete action
                 default:
                     console.warn("Unknown user action:", action); return false;
             }
@@ -540,8 +550,10 @@ export default function Dashboard() {
             return true;
         } catch (error) {
              console.error(`Error performing ${action} for user ${username}:`, error);
-             // Error toast is handled in the UserListCard's catch block
-             return false; // Indicate failure
+             // Error toast is handled in the UserListCard's catch block or the handler itself
+             // Re-throw or return false based on how UserListCard handles it
+             // throw error; // Let UserListCard catch it
+             return false; // Indicate failure, UserListCard shows toast
         }
     };
 
@@ -639,5 +651,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
-    

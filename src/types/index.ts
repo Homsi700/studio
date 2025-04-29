@@ -48,13 +48,17 @@ export interface PppoeUserDetails {
     comment?: string; // Comment field from PPP Secret (often used for notes/expiry)
 }
 
-// Actions for User Management
+// Actions for User Management - Define action names more clearly
+export type UserActionType = 'enableUser' | 'disableUser' | 'renewUser' | 'deleteUser';
+
+// Map action types to functions
 export interface UserActions {
-    onEnableUser: (username: string, serverName: string) => Promise<void>;
-    onDisableUser: (username: string, serverName: string) => Promise<void>;
-    onRenewUser: (username: string, serverName: string, currentExpiry?: string) => Promise<void>; // Pass current expiry for calculation
-    // Add onDeleteUser if needed
+    onEnableUser: (username: string, serverName: string) => Promise<boolean>;
+    onDisableUser: (username: string, serverName: string) => Promise<boolean>;
+    onRenewUser: (username: string, serverName: string, currentExpiry?: string) => Promise<boolean>;
+    onDeleteUser: (username: string, serverName: string) => Promise<boolean>; // Add delete action
 }
+
 
 // Re-export Mikrotik type for easier import in components that need it
 export type { Mikrotik };

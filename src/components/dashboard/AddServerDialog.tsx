@@ -30,20 +30,25 @@ import { useToast } from "@/hooks/use-toast";
 import type { Mikrotik } from "@/services/mikrotik";
 import { addServer } from "@/services/servers"; // Import placeholder addServer function
 
-// Updated schema to include server type and default speed
+// Updated schema to include server type, default speed, and optional API port
 const serverSchema = z.object({
   name: z.string().min(1, "Server name is required"),
   ipAddress: z.string().ip({ version: "v4", message: "Invalid IP address" }),
+  apiPort: z.preprocess(
+        (val) => (val === "" ? undefined : Number(val)), // Convert empty string to undefined, otherwise number
+        z.number().int().positive().lte(65535).optional()
+      ).describe("API Port (default: 8728/8729)"),
   username: z.string().min(1, "Admin username is required"),
   password: z.string().min(1, "Admin password is required"),
-  serverType: z.enum(["main", "sub"], { required_error: "Server type is required" }), // Made required
-  defaultSpeed: z.string().optional(), // Kept optional as per original, can be made required if needed
+  serverType: z.enum(["main", "sub"], { required_error: "Server type is required" }),
+  defaultSpeed: z.string().optional(),
 });
 
 type ServerFormData = z.infer<typeof serverSchema>;
 
 interface AddServerDialogProps {
-  onAddServer: (newServer: Mikrotik) => void; // Callback to update parent state
+  // The callback now expects the full Mikrotik data structure, including the optional port
+  onAddServer: (newServer: Omit<Mikrotik, 'type'> & { type: 'main' | 'sub' }) => Promise<boolean>; // Modified callback type
 }
 
 export function AddServerDialog({ onAddServer }: AddServerDialogProps) {
@@ -60,53 +65,43 @@ export function AddServerDialog({ onAddServer }: AddServerDialogProps) {
     defaultValues: {
       name: "",
       ipAddress: "",
+      apiPort: undefined, // Default to undefined
       username: "",
       password: "",
-      serverType: undefined, // Explicitly set optional fields if needed
+      serverType: undefined,
       defaultSpeed: "",
     }
   });
 
   const onSubmit = async (data: ServerFormData) => {
-    // Prepare the data for the service, including the new fields
+    // Prepare the data for the service, including the optional port
     const serverDataForApi = {
         name: data.name,
         ipAddress: data.ipAddress,
+        apiPort: data.apiPort, // Pass the port
         username: data.username,
         password: data.password, // Handle securely in real implementation
         type: data.serverType,
         defaultSpeed: data.defaultSpeed
     };
 
-     // Basic Mikrotik object structure for UI update
-    const newServerForUi: Mikrotik = {
-      name: data.name,
-      ipAddress: data.ipAddress,
-    };
-
     try {
-      // TODO: Replace with actual API call using addServer
-      console.log("Submitting new server:", serverDataForApi);
-      // Simulate checking connection and saving
-      const success = await addServer(serverDataForApi); // Pass full form data to service
+      // Call the parent's onAddServer function which should handle the API call
+      const success = await onAddServer(serverDataForApi); // Pass full form data
 
       if (success) {
-          toast({
-              title: "Success",
-              description: `Server ${data.name} added successfully.`,
-          });
-          onAddServer(newServerForUi); // Call the callback to update the parent state with UI data
+          // Toast is handled by the parent now
           reset(); // Reset form fields
           setIsOpen(false); // Close dialog
-      } else {
-          throw new Error("Failed to connect to the server or save.");
       }
+      // Failure toast is handled by the parent
 
     } catch (error) {
-      console.error("Failed to add server:", error);
+      // This catch might not be reached if parent handles it, but kept for safety
+      console.error("Failed to add server (dialog onSubmit):", error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : `Failed to add server ${data.name}. Please check details and try again.`,
+        description: error instanceof Error ? error.message : `Failed to submit server data.`,
         variant: "destructive",
       });
     }
@@ -153,6 +148,23 @@ export function AddServerDialog({ onAddServer }: AddServerDialogProps) {
               <Input id="ipAddress" {...register("ipAddress")} className="col-span-3" placeholder="e.g., 192.168.88.1" aria-invalid={errors.ipAddress ? "true" : "false"}/>
               {errors.ipAddress && <p className="col-span-4 text-right text-xs text-destructive">{errors.ipAddress.message}</p>}
             </div>
+
+             {/* API Port (Optional) */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="apiPort" className="text-right">
+                API Port
+              </Label>
+              <Input
+                id="apiPort"
+                type="number"
+                 {...register("apiPort")}
+                className="col-span-3"
+                placeholder="Optional (e.g., 8728)"
+                aria-invalid={errors.apiPort ? "true" : "false"}
+                />
+              {errors.apiPort && <p className="col-span-4 text-right text-xs text-destructive">{errors.apiPort.message}</p>}
+            </div>
+
 
             {/* Admin Username */}
             <div className="grid grid-cols-4 items-center gap-4">

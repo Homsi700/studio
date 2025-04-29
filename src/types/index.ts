@@ -16,8 +16,9 @@ export interface NetworkDeviceStatus {
 export type DeviceType = 'mikrotik' | 'mimosa' | 'ubnt';
 
 // Combined device type used in the main page state
+// Added apiPort to Mikrotik part
 export type NetworkDevice =
-  | ({ type: 'mikrotik' } & Mikrotik)
+  | ({ type: 'mikrotik' } & Mikrotik & { apiPort?: number }) // Added apiPort here
   | ({ type: 'mimosa' } & Mimosa)
   | ({ type: 'ubnt' } & Ubnt);
 
@@ -51,7 +52,7 @@ export interface PppoeUserDetails {
 // Actions for User Management - Define action names more clearly
 export type UserActionType = 'enableUser' | 'disableUser' | 'renewUser' | 'deleteUser';
 
-// Map action types to functions
+// Map action types to functions (This interface might be less needed if using a single handler)
 export interface UserActions {
     onEnableUser: (username: string, serverName: string) => Promise<boolean>;
     onDisableUser: (username: string, serverName: string) => Promise<boolean>;
@@ -61,4 +62,5 @@ export interface UserActions {
 
 
 // Re-export Mikrotik type for easier import in components that need it
+// Include apiPort in the exported Mikrotik type for consistency if needed elsewhere
 export type { Mikrotik };

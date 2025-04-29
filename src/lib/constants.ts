@@ -7,10 +7,11 @@ export const SIGNAL_STRENGTH_THRESHOLD_ERROR = -80; // Critical/disconnected sig
 export const TRAFFIC_THRESHOLD_WARN = 80.0; // Example: Warn if traffic exceeds 80 Mbps
 
 // Example dummy data structures matching service interfaces
+// Add optional apiPort to Mikrotik mocks
 export const MOCK_MIKROTIK_SERVERS = [
-  { name: 'Main Router', ipAddress: '192.168.88.1' },
-  { name: 'Branch Router', ipAddress: '10.0.0.1' },
-  { name: 'Office Router', ipAddress: '172.16.0.1' },
+  { name: 'Main Router', ipAddress: '192.168.88.1', apiPort: 8728 }, // Example with default port
+  { name: 'Branch Router', ipAddress: '10.0.0.1' /* apiPort defaults */ },
+  { name: 'Office Router', ipAddress: '172.16.0.1', apiPort: 8729 }, // Example with SSL port
 ];
 
 export const MOCK_MIMOSA_TOWERS = [

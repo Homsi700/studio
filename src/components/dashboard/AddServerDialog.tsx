@@ -28,7 +28,8 @@ import {
 } from "@/components/ui/select"; // Import Select components
 import { useToast } from "@/hooks/use-toast";
 import type { Mikrotik } from "@/services/mikrotik";
-import { addServer } from "@/services/servers"; // Import placeholder addServer function
+// Service function import is already handled by the parent component passing the callback
+// import { addServer } from "@/services/servers";
 
 // Updated schema to include server type, default speed, and optional API port
 const serverSchema = z.object({
@@ -65,7 +66,7 @@ export function AddServerDialog({ onAddServer }: AddServerDialogProps) {
     defaultValues: {
       name: "",
       ipAddress: "",
-      apiPort: undefined, // Default to undefined
+      apiPort: 6166, // Default to the API port 6166 as specified by user
       username: "",
       password: "",
       serverType: undefined,
@@ -78,7 +79,7 @@ export function AddServerDialog({ onAddServer }: AddServerDialogProps) {
     const serverDataForApi = {
         name: data.name,
         ipAddress: data.ipAddress,
-        apiPort: data.apiPort, // Pass the port
+        apiPort: data.apiPort || 6166, // Use entered port or default to 6166 if empty
         username: data.username,
         password: data.password, // Handle securely in real implementation
         type: data.serverType,
@@ -159,7 +160,7 @@ export function AddServerDialog({ onAddServer }: AddServerDialogProps) {
                 type="number"
                  {...register("apiPort")}
                 className="col-span-3"
-                placeholder="Optional (e.g., 8728)"
+                placeholder="Default: 6166" // Show the new default in placeholder
                 aria-invalid={errors.apiPort ? "true" : "false"}
                 />
               {errors.apiPort && <p className="col-span-4 text-right text-xs text-destructive">{errors.apiPort.message}</p>}

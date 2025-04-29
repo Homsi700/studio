@@ -24,19 +24,21 @@ export interface ServerData {
  * @throws If the API call to the backend fails or the backend returns an unhandled error.
  */
 export async function addServer(serverData: ServerData): Promise<boolean> {
-  console.log(`SERVICE: Attempting to add server: ${serverData.name} (${serverData.ipAddress}:${serverData.apiPort || 'default'})`);
+  // Use the provided port or default to 6166 if not specified
+  const effectiveApiPort = serverData.apiPort || 6166;
+  console.log(`SERVICE: Attempting to add server: ${serverData.name} (${serverData.ipAddress}:${effectiveApiPort})`);
   console.log("Server Data:", serverData);
 
   // *** Backend API Call Simulation ***
-  // The backend service receives serverData (including apiPort).
-  // It uses ipAddress and apiPort (defaulting if needed) to connect to the Mikrotik.
+  // The backend service receives serverData.
+  // It uses ipAddress and effectiveApiPort to connect to the Mikrotik.
   try {
     /*
     const response = await fetch('/api/servers', { // Example backend API endpoint
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Send all necessary data, including apiPort
-        body: JSON.stringify(serverData),
+        // Send all necessary data, including the effectiveApiPort
+        body: JSON.stringify({ ...serverData, apiPort: effectiveApiPort }),
     });
 
     if (!response.ok) {
@@ -57,15 +59,21 @@ export async function addServer(serverData: ServerData): Promise<boolean> {
     return result.success; // Or simply return true if response.ok implies success
     */
 
-    // Simulate backend connection check based on provided details
-    if (serverData.ipAddress === '2.2.2.1' && serverData.username === 'ya' && serverData.password === '616') {
-         console.log(`SERVICE: Simulated backend connection SUCCESS for ${serverData.name}.`);
+    // Simulate backend connection check based on user's provided details
+    if (serverData.ipAddress === '2.2.2.1' && serverData.username === 'ya' && serverData.password === '616' && effectiveApiPort === 6166) {
+         console.log(`SERVICE: Simulated backend connection SUCCESS for ${serverData.name} on port ${effectiveApiPort}.`);
          // Here, the backend would store the server details in the database.
          console.log("SERVICE: Server add API call simulated successfully.");
          return true; // Placeholder success
     } else {
-         console.log(`SERVICE: Simulated backend connection FAILED for ${serverData.name}. Invalid credentials or IP.`);
-         throw new Error(`Simulated backend: Connection failed for ${serverData.name}. Check IP, port, and credentials.`);
+         console.log(`SERVICE: Simulated backend connection FAILED for ${serverData.name} (${serverData.ipAddress}:${effectiveApiPort}). Invalid credentials, IP, or Port.`);
+         // Make error message more specific
+         let reason = "Invalid details";
+         if (serverData.ipAddress !== '2.2.2.1') reason = "Incorrect IP";
+         else if (serverData.username !== 'ya') reason = "Incorrect username";
+         else if (serverData.password !== '616') reason = "Incorrect password";
+         else if (effectiveApiPort !== 6166) reason = `Incorrect API port (Expected 6166, got ${effectiveApiPort})`;
+         throw new Error(`Simulated backend: Connection failed for ${serverData.name}. Reason: ${reason}. Check IP, port, and credentials.`);
     }
 
 
@@ -93,7 +101,8 @@ export async function restartMikrotikServer(
     adminUsername?: string,
     adminPassword?: string
 ): Promise<boolean> {
-    console.log(`SERVICE: Attempting to restart server ${serverIp}:${apiPort || 'default'}`);
+    const effectiveApiPort = apiPort || 6166; // Use 6166 as default for restart too if applicable
+    console.log(`SERVICE: Attempting to restart server ${serverIp}:${effectiveApiPort}`);
 
     // Backend API needs server IP, port, and credentials.
     try {
@@ -103,7 +112,7 @@ export async function restartMikrotikServer(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 serverIp: serverIp,
-                apiPort: apiPort, // Pass port
+                apiPort: effectiveApiPort, // Pass effective port
                 username: adminUsername, // Pass creds securely
                 password: adminPassword,
              }),

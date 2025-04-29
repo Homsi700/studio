@@ -35,10 +35,10 @@ export default function Dashboard() {
   const router = useRouter();
   const { toast } = useToast(); // Initialize toast hook
   const [deviceStatuses, setDeviceStatuses] = React.useState<Record<string, NetworkDeviceStatus>>({});
-  const [loading, setLoading] = React.useState<boolean>(true);
+  const [loading, setLoading] = React.useState<boolean>(true); // Main loading state for initial device status load
   const [devices, setDevices] = React.useState<NetworkDevice[]>([]);
   const [pppoeUsers, setPppoeUsers] = React.useState<PppoeUserDetails[]>([]);
-  const [loadingUsers, setLoadingUsers] = React.useState<boolean>(false);
+  const [loadingUsers, setLoadingUsers] = React.useState<boolean>(false); // Separate loading state for user list
   const ws = React.useRef<WebSocket | null>(null);
   const reconnectInterval = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -82,7 +82,7 @@ export default function Dashboard() {
          }
     }
     setDevices(initialDevices);
-    setLoading(false); // Initial device load is finished
+    // setLoading(false); // Don't set loading false here, let the fetch effect handle it
   }, []);
 
     // --- Save devices to localStorage whenever they change ---
@@ -102,9 +102,9 @@ export default function Dashboard() {
    };
 
     // Function to fetch users from all Mikrotik servers (can be triggered by polling or WS message)
-    const fetchAllMikrotikUsers = React.useCallback(async (showLoading = true) => {
+    const fetchAllMikrotikUsers = React.useCallback(async (showLoadingIndicator = true) => {
         if (!isAuthenticated) return;
-        if (showLoading) setLoadingUsers(true);
+        if (showLoadingIndicator) setLoadingUsers(true);
         const mikrotikServers = devices.filter(d => d.type === 'mikrotik') as Mikrotik[];
         const allUsersPromises = mikrotikServers.map(server => getMikrotikUsers(server));
 
@@ -136,86 +136,97 @@ export default function Dashboard() {
                  variant: "destructive",
              });
         } finally {
-            if (showLoading) setLoadingUsers(false);
+            // Always set loadingUsers false when the fetch attempt (success or fail) is complete
+            if (showLoadingIndicator) setLoadingUsers(false);
         }
     }, [devices, isAuthenticated, toast]); // Add toast
 
     // Function to fetch statuses (can be triggered by polling or WS request)
-    const fetchDeviceStatuses = React.useCallback(async (showLoading = true) => {
-        if (showLoading) setLoading(true); // Set loading true at the start
+     const fetchDeviceStatuses = React.useCallback(async (showLoadingIndicator = true) => {
+        // Decide whether to show the main page loading indicator
+        if (showLoadingIndicator) setLoading(true);
         const newStatuses: Record<string, NetworkDeviceStatus> = {};
 
-
-        await Promise.allSettled(
-        devices.map(async (device) => {
-            const key = `${device.type}-${device.ipAddress}`;
-            try {
-            let status: NetworkDeviceStatus = { connected: false, alertState: 'normal' };
-            let traffic = 0; // Simulate traffic
-
-            if (device.type === 'mikrotik') {
-                const isConnected = await checkMikrotikConnection(device);
-                let userCount = 0;
-                if (isConnected) {
+        try { // Added try block here
+            await Promise.allSettled(
+                devices.map(async (device) => {
+                    const key = `${device.type}-${device.ipAddress}`;
                     try {
-                        // Use the cached pppoeUsers state for count if available and recent, else fetch
-                        // This is a simplification; a better approach might involve timestamps or specific triggers
-                        if (pppoeUsers.length > 0) {
-                             userCount = pppoeUsers.filter(u => u.serverName === device.name && u.status === 'online').length;
-                        } else {
-                             // Fallback to fetching if cached data is unavailable (or considered stale)
-                             const serverUsers = await getMikrotikUsers(device);
-                             userCount = serverUsers.filter(u => u.status === 'online').length; // Count only online users
-                        }
-                    } catch { userCount = 0; }
-                }
+                       let status: NetworkDeviceStatus = { connected: false, alertState: 'normal' };
+                       let traffic = 0; // Simulate traffic
 
-                const downloadSpeed = isConnected ? `${(Math.random() * 100 + 10).toFixed(1)} Mbps` : '0 Mbps';
-                const uploadSpeed = isConnected ? `${(Math.random() * 50 + 5).toFixed(1)} Mbps` : '0 Mbps';
-                traffic = Math.random() * (TRAFFIC_THRESHOLD_WARN * 1.5);
-                status = { connected: isConnected, users: userCount, downloadSpeed, uploadSpeed, alertState: traffic > TRAFFIC_THRESHOLD_WARN ? 'warning' : 'normal' };
+                       if (device.type === 'mikrotik') {
+                           const isConnected = await checkMikrotikConnection(device);
+                           let userCount = 0;
+                           if (isConnected) {
+                               try {
+                                   // Use the cached pppoeUsers state for count if available and recent, else fetch
+                                   // This is a simplification; a better approach might involve timestamps or specific triggers
+                                   if (pppoeUsers.length > 0) {
+                                        userCount = pppoeUsers.filter(u => u.serverName === device.name && u.status === 'online').length;
+                                   } else {
+                                        // Fallback to fetching if cached data is unavailable (or considered stale)
+                                        const serverUsers = await getMikrotikUsers(device);
+                                        userCount = serverUsers.filter(u => u.status === 'online').length; // Count only online users
+                                   }
+                               } catch { userCount = 0; }
+                           }
 
-            } else if (device.type === 'mimosa') {
-                const signalStrength = await getMimosaSignalStrength(device);
-                const isConnected = signalStrength > -90;
-                traffic = await getMimosaTraffic(device);
-                const noiseFactor = Math.random() > 0.9 ? -10 : 0;
-                const currentSignal = signalStrength + noiseFactor;
-                let alertState: AlertState = 'normal';
-                if (traffic > TRAFFIC_THRESHOLD_WARN) alertState = 'warning';
-                if (!isConnected || currentSignal < -80) alertState = 'error';
-                status = { connected: isConnected, signalStrength: currentSignal, alertState };
+                           const downloadSpeed = isConnected ? `${(Math.random() * 100 + 10).toFixed(1)} Mbps` : '0 Mbps';
+                           const uploadSpeed = isConnected ? `${(Math.random() * 50 + 5).toFixed(1)} Mbps` : '0 Mbps';
+                           traffic = Math.random() * (TRAFFIC_THRESHOLD_WARN * 1.5);
+                           status = { connected: isConnected, users: userCount, downloadSpeed, uploadSpeed, alertState: traffic > TRAFFIC_THRESHOLD_WARN ? 'warning' : 'normal' };
 
-            } else if (device.type === 'ubnt') {
-                const signalStrength = await getUbntSignalStrength(device);
-                const isConnected = signalStrength > -90;
-                traffic = await getUbntTraffic(device);
-                const noiseFactor = Math.random() > 0.9 ? -10 : 0;
-                const currentSignal = signalStrength + noiseFactor;
-                let alertState: AlertState = 'normal';
-                if (traffic > TRAFFIC_THRESHOLD_WARN) alertState = 'warning';
-                if (!isConnected || currentSignal < -80) alertState = 'error';
-                status = { connected: isConnected, signalStrength: currentSignal, alertState };
-            }
-            newStatuses[key] = status;
-            } catch (error) {
-            console.error(`Failed to fetch status for ${device.name} (${device.ipAddress}):`, error);
-            newStatuses[key] = { connected: false, alertState: 'error' };
-            }
-        })
-        );
+                       } else if (device.type === 'mimosa') {
+                           const signalStrength = await getMimosaSignalStrength(device);
+                           const isConnected = signalStrength > -90;
+                           traffic = await getMimosaTraffic(device);
+                           const noiseFactor = Math.random() > 0.9 ? -10 : 0;
+                           const currentSignal = signalStrength + noiseFactor;
+                           let alertState: AlertState = 'normal';
+                           if (traffic > TRAFFIC_THRESHOLD_WARN) alertState = 'warning';
+                           if (!isConnected || currentSignal < -80) alertState = 'error';
+                           status = { connected: isConnected, signalStrength: currentSignal, alertState };
 
-        setDeviceStatuses(newStatuses);
-        if (showLoading) setLoading(false); // Set loading false after all fetches complete
-    }, [devices, pppoeUsers]); // Add pppoeUsers dependency
+                       } else if (device.type === 'ubnt') {
+                           const signalStrength = await getUbntSignalStrength(device);
+                           const isConnected = signalStrength > -90;
+                           traffic = await getUbntTraffic(device);
+                           const noiseFactor = Math.random() > 0.9 ? -10 : 0;
+                           const currentSignal = signalStrength + noiseFactor;
+                           let alertState: AlertState = 'normal';
+                           if (traffic > TRAFFIC_THRESHOLD_WARN) alertState = 'warning';
+                           if (!isConnected || currentSignal < -80) alertState = 'error';
+                           status = { connected: isConnected, signalStrength: currentSignal, alertState };
+                       }
+                       newStatuses[key] = status;
+                    } catch (error) {
+                       console.error(`Failed to fetch status for ${device.name} (${device.ipAddress}):`, error);
+                       newStatuses[key] = { connected: false, alertState: 'error' };
+                    }
+                })
+            );
+
+            setDeviceStatuses(newStatuses);
+        } catch (error) {
+             // Catch any potential errors from Promise.allSettled itself, though unlikely
+             console.error("Unexpected error during fetchDeviceStatuses:", error);
+        } finally {
+             // Ensure loading is set to false ONLY if showLoadingIndicator was true
+             if (showLoadingIndicator) setLoading(false);
+        }
+    }, [devices, pppoeUsers, getMikrotikUsers]); // Add getMikrotikUsers dependency
 
 
     // Fetch initial data and set up polling intervals (as fallback)
     React.useEffect(() => {
-        if (isAuthenticated && devices.length > 0) {
+        // Only run initial fetch if authenticated AND devices are loaded
+        if (isAuthenticated && devices.length > 0 && loading) { // Check main loading state
             console.log("Authenticated and devices loaded, fetching initial statuses and users.");
-            fetchDeviceStatuses(true); // Show loading for initial fetch
-            fetchAllMikrotikUsers(true); // Show loading for initial fetch
+            // Pass true to show the main loading indicator for the initial device status fetch
+            fetchDeviceStatuses(true);
+            // Pass true to show the user list loading indicator (separate)
+            fetchAllMikrotikUsers(true);
 
             // Set up intervals for periodic refresh (increased intervals, rely on WS for speed)
             const statusIntervalId = setInterval(() => fetchDeviceStatuses(false), 60000); // Fetch every 60 seconds without loading indicator
@@ -227,9 +238,15 @@ export default function Dashboard() {
                 clearInterval(userIntervalId);
             }
         } else {
-            console.log("Not fetching data: Not authenticated or no devices yet.");
+            console.log("Not fetching data: Not authenticated, no devices yet, or already loaded.");
+            // If not loading initially (e.g., already loaded from cache or fast connection)
+            // ensure loading is false if it wasn't set by fetchDeviceStatuses
+             if (!loading && isAuthenticated === true) { // Make sure we don't accidentally set loading to false before auth check
+                 // This condition might be redundant if fetchDeviceStatuses always handles setLoading(false)
+                 // setLoading(false);
+             }
         }
-    }, [fetchDeviceStatuses, fetchAllMikrotikUsers, isAuthenticated, devices]); // Include dependencies
+    }, [fetchDeviceStatuses, fetchAllMikrotikUsers, isAuthenticated, devices, loading]); // Add 'loading' dependency
 
 
     // --- WebSocket Connection for Real-Time Updates ---
@@ -560,7 +577,8 @@ export default function Dashboard() {
     };
 
 
-  // Show loading indicator until authentication status is confirmed or initial device load is done
+  // Show loading indicator only while authentication status is being checked initially
+  // OR while initial device statuses are loading (handled by 'loading' state)
   if (isAuthenticated === undefined || loading) {
     return (
         <div className="flex h-screen items-center justify-center">
@@ -580,7 +598,7 @@ export default function Dashboard() {
         </div>
         <div className="flex flex-wrap items-center space-x-2">
            {/* Manual Refresh Button - useful if WS fails or for explicit refresh */}
-           <Button variant="outline" size="icon" onClick={() => {fetchDeviceStatuses(true); fetchAllMikrotikUsers(true);}} disabled={loading || loadingUsers} aria-label="Refresh statuses">
+           <Button variant="outline" size="icon" onClick={() => {fetchDeviceStatuses(false); fetchAllMikrotikUsers(false);}} disabled={loading || loadingUsers} aria-label="Refresh statuses">
              <RefreshCw className={cn("h-4 w-4", (loading || loadingUsers) && "animate-spin")} />
            </Button>
           <AddUserDialog
@@ -604,7 +622,7 @@ export default function Dashboard() {
           {/* Device Grid (takes 2/3 width on large screens) */}
           <div className="lg:col-span-2">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {/* Initial Loading Skeletons (removed as main loading handles this) */}
+                {/* No skeleton needed here as the main 'loading' state handles the whole page */}
                 {/* Display actual device cards */}
                 {devices.map((device) => {
                     const key = `${device.type}-${device.ipAddress}`;
@@ -643,7 +661,7 @@ export default function Dashboard() {
            <div className="lg:col-span-1">
               <UserListCard
                   users={pppoeUsers}
-                  isLoading={loadingUsers}
+                  isLoading={loadingUsers} // Use separate loading state for users
                   mikrotikServers={devices.filter(d => d.type === 'mikrotik') as Mikrotik[]} // Pass only Mikrotik servers
                   onUserAction={handleUserAction} // Pass consolidated handler
                   onRefreshUsers={() => fetchAllMikrotikUsers(true)} // Pass refresh handler (with loading indicator)
@@ -653,3 +671,6 @@ export default function Dashboard() {
     </div>
   );
 }
+
+
+    

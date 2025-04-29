@@ -464,7 +464,10 @@ export default function Dashboard() {
            });
             // Remove users if it was a Mikrotik server
             if (type === 'mikrotik') {
-                setPppoeUsers(prevUsers => prevUsers.filter(user => user.serverName !== ip)); // Adjust if serverName isn't IP
+                const server = prevDevices.find(d => d.type === 'mikrotik' && d.ipAddress === ip);
+                 if (server) {
+                     setPppoeUsers(prevUsers => prevUsers.filter(user => user.serverName !== server.name));
+                 }
             }
 
            toast({
@@ -540,9 +543,8 @@ export default function Dashboard() {
                  fetchAllMikrotikUsers(false); // Refresh user list immediately after action
                  // Notify backend via WebSocket about the user action
                  // Check WebSocket state before sending
-                 if (ws.current?.readyState === WebSocket.OPEN) {
-                     sendWebSocketMessage({ type: 'user_action', payload: { action, username, serverName } });
-                 } else {
+                 const messageSent = sendWebSocketMessage({ type: 'user_action', payload: { action, username, serverName } });
+                 if (!messageSent) {
                       console.warn("WebSocket not open when trying to send user action notification.");
                       // Optionally inform user that real-time update might be delayed
                  }

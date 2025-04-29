@@ -667,12 +667,12 @@ export default function Dashboard() {
   // Show loading indicator only during initial authentication check
    if (isAuthenticated === undefined) {
        return (
-           <div className="flex h-screen items-center justify-center">
-               {/* Simple spinner, no full-screen overlay */}
-               <RefreshCw className="h-8 w-8 animate-spin text-primary" />
-               {/* Removed the "Loading dashboard..." text */}
-           </div>
-       );
+            <div className="flex h-screen items-center justify-center">
+                {/* Minimalistic loading indicator without the blocking overlay */}
+                {/* You can customize this further if needed */}
+                <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
    }
    // Once authenticated (or not), render the main layout.
    // Skeletons inside the layout will handle loading states for devices/users.
@@ -711,9 +711,9 @@ export default function Dashboard() {
           {/* Device Grid (takes 2/3 width on large screens) */}
           <div className="lg:col-span-2">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {/* Skeletons shown if devices are loading OR statuses are loading AND devices exist */}
-                 {(loadingDevices || (loadingStatuses && devices.length > 0)) && Array.from({ length: loadingDevices ? 6 : devices.length }).map((_, index) => (
-                     <Card key={index} className="p-6 space-y-4">
+                {/* Skeletons shown ONLY during initial device loading */}
+                 {loadingDevices && Array.from({ length: 6 }).map((_, index) => (
+                     <Card key={`skel-${index}`} className="p-6 space-y-4">
                          <div className="flex justify-between items-start">
                              <Skeleton className="h-6 w-3/5" />
                              <Skeleton className="h-5 w-1/4" />
@@ -726,10 +726,11 @@ export default function Dashboard() {
                      </Card>
                  ))}
 
-                {/* Display actual device cards when statuses are loaded and devices are loaded */}
-                {!loadingDevices && !loadingStatuses && devices.map((device) => {
+                {/* Display actual device cards when devices are loaded (statuses update in place) */}
+                {!loadingDevices && devices.map((device) => {
                     const key = `${device.type}-${device.ipAddress}`;
-                    const status = deviceStatuses[key] || { connected: false, alertState: 'error' }; // Default to error if status missing
+                    // Use current status or a default if status hasn't loaded yet for this device
+                    const status = deviceStatuses[key] || { connected: false, alertState: 'error' };
                     return (
                     <DeviceCard
                         key={key}
@@ -773,4 +774,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
 

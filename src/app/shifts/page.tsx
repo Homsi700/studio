@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -14,6 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
+
 
 interface Shift {
   id: string;
@@ -30,7 +33,16 @@ const initialShifts: Shift[] = [
 
 export default function ShiftsPage() {
   const [shifts, setShifts] = useState<Shift[]>(initialShifts);
+  const { toast } = useToast();
   // States for form dialog would go here
+
+  const handleDummyAction = (actionName: string) => {
+    toast({
+      title: "ميزة قيد التطوير",
+      description: `وظيفة "${actionName}" غير مفعلة حالياً في هذه الصفحة.`,
+    });
+  };
+
 
   return (
     <div className="space-y-6">
@@ -40,12 +52,12 @@ export default function ShiftsPage() {
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle className="font-headline">الورديات الحالية</CardTitle>
-            <Button className="font-body">
+            <Button className="font-body" onClick={() => handleDummyAction('إضافة وردية جديدة')}>
               <PlusCircle className="mr-2 h-4 w-4" /> إضافة وردية جديدة
             </Button>
           </div>
           <CardDescription className="font-body">
-            قم بإعداد الورديات المختلفة وأوقات الدوام الرسمية.
+            قم بإعداد الورديات المختلفة وأوقات الدوام الرسمية. (ملاحظة: الأزرار أدناه غير مفعلة حالياً)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -67,10 +79,10 @@ export default function ShiftsPage() {
                   <TableCell className="font-body">{shift.endTime}</TableCell>
                   <TableCell className="font-body">{shift.gracePeriodMinutes}</TableCell>
                   <TableCell className="text-center">
-                    <Button variant="ghost" size="icon">
+                    <Button variant="ghost" size="icon" onClick={() => handleDummyAction(`تعديل وردية: ${shift.name}`)}>
                       <Edit className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDummyAction(`حذف وردية: ${shift.name}`)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </TableCell>
@@ -86,24 +98,27 @@ export default function ShiftsPage() {
         <CardHeader>
           <CardTitle className="font-headline">قواعد العمل الإضافي</CardTitle>
           <CardDescription className="font-body">
-            حدد قواعد حساب العمل الإضافي وساعات السماح.
+            حدد قواعد حساب العمل الإضافي وساعات السماح. (ملاحظة: الأزرار والحقول أدناه غير مفعلة حالياً)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
             <Label htmlFor="overtimeMultiplier" className="font-body">معامل حساب العمل الإضافي</Label>
-            <Input id="overtimeMultiplier" type="number" defaultValue="1.5" className="font-body mt-1" />
+            <Input id="overtimeMultiplier" type="number" defaultValue="1.5" className="font-body mt-1" disabled />
             <p className="text-sm text-muted-foreground font-body mt-1">مثال: 1.5 يعني أن ساعة العمل الإضافي تحتسب كساعة ونصف.</p>
           </div>
           <div>
             <Label htmlFor="maxLateMinutes" className="font-body">أقصى مدة تأخير مسموح بها (دقائق)</Label>
-            <Input id="maxLateMinutes" type="number" defaultValue="30" className="font-body mt-1" />
+            <Input id="maxLateMinutes" type="number" defaultValue="30" className="font-body mt-1" disabled />
           </div>
         </CardContent>
         <CardFooter>
-          <Button className="font-body">حفظ القواعد</Button>
+          <Button className="font-body" onClick={() => handleDummyAction('حفظ القواعد')}>حفظ القواعد</Button>
         </CardFooter>
       </Card>
     </div>
   );
 }
+
+
+    

@@ -31,7 +31,8 @@ export default function PayrollPage() {
   
   const [isCalcModalOpen, setIsCalcModalOpen] = useState(false);
   const [selectedEmployeeIdForCalc, setSelectedEmployeeIdForCalc] = useState<string>('');
-  const [selectedMonth, setSelectedMonth] = useState<string>((new Date().getMonth()).toString());
+  const initialMonth = (new Date().getMonth()).toString(); // 0-11 for Date object, adjust if needed
+  const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth);
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
   const [calculationResult, setCalculationResult] = useState<PayrollRecord | null>(null);
 
@@ -138,7 +139,7 @@ export default function PayrollPage() {
     setIsSubmitting(true);
     setCalculationResult(null);
     try {
-        const result = await calculateMonthlyPayroll(selectedEmployeeIdForCalc, parseInt(selectedMonth) + 1, parseInt(selectedYear));
+        const result = await calculateMonthlyPayroll(selectedEmployeeIdForCalc, parseInt(selectedMonth) + 1, parseInt(selectedYear)); // Month is 1-12 for action
         if (result.success && result.payrollRecord) {
             toast({ title: "نجاح", description: result.message });
             setCalculationResult(result.payrollRecord);
@@ -179,8 +180,7 @@ export default function PayrollPage() {
       toast({ title: "نجاح", description: "تم إضافة سعر الصرف بنجاح." });
       setNewRateDate(format(new Date(), 'yyyy-MM-dd'));
       setNewRateValue('');
-      await fetchPageData(); // Refresh rates
-      // setIsExchangeRateModalOpen(false); // Optionally close modal
+      await fetchPageData(); 
     } catch (error: any) {
       toast({ title: "خطأ", description: error.message || "فشل في إضافة سعر الصرف.", variant: "destructive" });
     } finally {
@@ -188,7 +188,11 @@ export default function PayrollPage() {
     }
   };
   
-  const months = Array.from({length: 12}, (_, i) => ({ value: i.toString(), label: new Date(0, i).toLocaleString('ar-SA', { month: 'long' }) }));
+  const months = Array.from({length: 12}, (_, i) => {
+    const monthName = new Date(0, i).toLocaleString('ar-SA-u-nu-latn', { month: 'long' }); // u-nu-latn for Arabic numerals
+    return { value: i.toString(), label: `${monthName} (${i + 1})` };
+  });
+  
   const currentYear = new Date().getFullYear();
   const years = Array.from({length: 5}, (_, i) => (currentYear - i).toString());
 
@@ -486,3 +490,6 @@ export default function PayrollPage() {
     </div>
   );
 }
+
+
+    

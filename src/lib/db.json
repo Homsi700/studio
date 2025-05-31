@@ -1,3 +1,4 @@
+
 {
   "employees": [
     {
@@ -7,7 +8,8 @@
       "jobTitle": "مهندس برمجيات",
       "email": "ahmad.m@example.com",
       "phone": "0912345678",
-      "avatarUrl": "https://placehold.co/100x100.png"
+      "avatarUrl": "https://placehold.co/100x100.png",
+      "hashedPin": "$2a$10$abcdefghijklmnopqrstuv" 
     },
     {
       "id": "2",

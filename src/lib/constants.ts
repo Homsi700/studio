@@ -1,5 +1,6 @@
+
 import type { LucideIcon } from 'lucide-react';
-import { LayoutDashboard, Users, CalendarDays, Briefcase, Settings, Lightbulb, GanttChartSquare } from 'lucide-react';
+import { LayoutDashboard, Users, CalendarDays, Briefcase, Settings, Lightbulb, GanttChartSquare, Fingerprint } from 'lucide-react';
 
 export interface NavItem {
   href: string;
@@ -15,6 +16,7 @@ export const navItems: NavItem[] = [
   { href: '/leaves', label: 'إدارة الإجازات', icon: Briefcase, tooltip: 'Leaves' },
   { href: '/shifts', label: 'إدارة الورديات', icon: GanttChartSquare, tooltip: 'Shifts' },
   { href: '/insights', label: 'تحليلات الحضور', icon: Lightbulb, tooltip: 'Insights' },
+  { href: '/checkin-checkout', label: 'تسجيل الدخول/الخروج', icon: Fingerprint, tooltip: 'Check-in/Out' },
   { href: '/settings', label: 'الإعدادات', icon: Settings, tooltip: 'Settings' },
 ];
 
@@ -26,17 +28,18 @@ export interface Employee {
   email: string;
   phone: string;
   avatarUrl?: string;
+  hashedPin?: string; // For storing the hashed PIN
 }
 
 export interface AttendanceRecord {
   id: string;
   employeeId: string;
   employeeName: string;
-  date: string;
-  clockIn: string;
-  clockOut: string;
-  totalDuration: string;
-  status: 'onTime' | 'late' | 'earlyLeave' | 'absent';
+  date: string; // YYYY-MM-DD
+  clockIn: string; // HH:MM
+  clockOut: string | null; // HH:MM or null if still clocked in
+  totalDuration: string | null; // "X hours Y minutes" or null
+  status: 'onTime' | 'late' | 'earlyLeave' | 'absent' | 'onDuty'; // 'onDuty' for currently clocked in
 }
 
 export type LeaveRequestStatus = 'pending' | 'approved' | 'rejected';
@@ -44,7 +47,7 @@ export type LeaveRequestStatus = 'pending' | 'approved' | 'rejected';
 export interface LeaveRequest {
   id: string;
   employeeId: string;
-  employeeName: string; // Kept for easier display, but can be looked up if needed
+  employeeName: string;
   startDate: string;
   endDate: string;
   reason: string;

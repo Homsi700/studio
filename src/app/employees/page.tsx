@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -7,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { PlusCircle, Edit, Trash2, Search, Loader2 } from "lucide-react";
+import { PlusCircle, Edit, Trash2, Search, Loader2, KeyRound } from "lucide-react";
 import type { Employee } from '@/lib/constants';
 import { getEmployees, addEmployee, updateEmployee, deleteEmployee } from '@/actions/employeeActions';
 import Image from 'next/image';
@@ -57,6 +58,9 @@ export default function EmployeesPage() {
   };
 
   const handleDeleteEmployee = async (id: string) => {
+    // Find the employee to set as current for spinner logic
+    const employeeToDelete = employees.find(emp => emp.id === id);
+    if (employeeToDelete) setCurrentEmployee(employeeToDelete);
     setIsSubmitting(true);
     try {
       await deleteEmployee(id);
@@ -67,6 +71,7 @@ export default function EmployeesPage() {
       toast({ title: "خطأ", description: "فشل في حذف الموظف.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
+      setCurrentEmployee(null); // Reset current employee after delete
     }
   };
 
@@ -80,7 +85,7 @@ export default function EmployeesPage() {
       jobTitle: formData.get('jobTitle') as string,
       email: formData.get('email') as string,
       phone: formData.get('phone') as string,
-      // avatarUrl can be handled if there's an upload mechanism, otherwise default or keep existing
+      pin: formData.get('pin') as string, // Get PIN from form
     };
 
     try {
@@ -157,7 +162,7 @@ export default function EmployeesPage() {
                           width={40} height={40} 
                           className="rounded-full" 
                           data-ai-hint="person avatar"
-                          unoptimized // if using placehold.co, next/image might complain without this for dynamic text
+                          unoptimized 
                         />
                       </TableCell>
                       <TableCell className="font-semibold font-body">{employee.name}</TableCell>
@@ -169,7 +174,7 @@ export default function EmployeesPage() {
                         <Button variant="ghost" size="icon" onClick={() => handleEditEmployee(employee)} disabled={isSubmitting}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteEmployee(employee.id)} disabled={isSubmitting}>
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteEmployee(employee.id)} disabled={isSubmitting && currentEmployee?.id === employee.id}>
                            {isSubmitting && currentEmployee?.id === employee.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                         </Button>
                       </TableCell>
@@ -214,7 +219,10 @@ export default function EmployeesPage() {
               <Label htmlFor="phone" className="text-right font-body">الهاتف</Label>
               <Input id="phone" name="phone" defaultValue={currentEmployee?.phone || ''} className="col-span-3 font-body" disabled={isSubmitting} />
             </div>
-            {/* Add avatarUrl input if needed, perhaps a file upload or URL input */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="pin" className="text-right font-body">الرقم السري (PIN)</Label>
+              <Input id="pin" name="pin" type="password" placeholder={currentEmployee?.id ? "اتركه فارغاً لعدم التغيير" : "4-6 أرقام"} className="col-span-3 font-body" disabled={isSubmitting} pattern="\d{4,6}" title="يجب أن يكون الرقم السري من 4 إلى 6 أرقام"/>
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)} className="font-body" disabled={isSubmitting}>إلغاء</Button>
               <Button type="submit" className="font-body" disabled={isSubmitting}>

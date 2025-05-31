@@ -1,16 +1,37 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-interface StatCardProps {
+interface StatCardData {
   title: string;
   value: string | number;
   icon: LucideIcon;
   description?: string;
 }
 
-export default function StatCard({ title, value, icon: Icon, description }: StatCardProps) {
+interface StatCardProps extends StatCardData {
+  onClick?: (data: StatCardData) => void;
+}
+
+export default function StatCard({ title, value, icon: Icon, description, onClick }: StatCardProps) {
+  const handleClick = () => {
+    if (onClick) {
+      onClick({ title, value, icon: Icon, description });
+    }
+  };
+
   return (
-    <Card>
+    <Card
+      onClick={onClick ? handleClick : undefined}
+      className={cn(
+        "transition-shadow duration-200 ease-in-out",
+        onClick && "cursor-pointer hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      )}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleClick(); } : undefined}
+      role={onClick ? "button" : undefined}
+      aria-label={onClick ? `View details for ${title}` : undefined}
+    >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium font-body">{title}</CardTitle>
         <Icon className="h-5 w-5 text-muted-foreground" />

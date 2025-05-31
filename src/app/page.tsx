@@ -1,10 +1,15 @@
 "use client";
 
+import { useState } from 'react';
+import type { LucideIcon } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Briefcase, Clock, BarChart3, PieChart, TrendingUp, AlertTriangle } from "lucide-react";
-import { ResponsiveContainer, BarChart, XAxis, YAxis, Bar, Tooltip, Legend, LineChart, Line, Pie } from 'recharts';
+import { Users, Briefcase, Clock, AlertTriangle } from "lucide-react";
+import { ResponsiveContainer, BarChart, XAxis, YAxis, Bar, Tooltip, Legend, LineChart, Line, Pie, PieChart } from 'recharts';
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+
 
 const weeklyAttendanceData = [
   { day: "الأحد", hours: 6 },
@@ -27,18 +32,32 @@ const chartConfig: ChartConfig = {
   hours: { label: "ساعات العمل", color: "hsl(var(--primary))"},
 };
 
+interface ModalContentData {
+  title: string;
+  value: string | number;
+  description?: string;
+  icon?: LucideIcon;
+}
 
 export default function DashboardPage() {
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [modalContent, setModalContent] = useState<ModalContentData | null>(null);
+
+  const handleStatCardClick = (data: ModalContentData) => {
+    setModalContent(data);
+    setIsDetailModalOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold font-headline">لوحة القيادة الرئيسية</h1>
       
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <StatCard title="إجمالي الموظفين" value="85" icon={Users} description="+5 هذا الشهر" />
-        <StatCard title="موظفون في الدوام" value="65" icon={Users} description="حالياً" />
-        <StatCard title="موظفون في إجازة" value="10" icon={Briefcase} description="اليوم" />
-        <StatCard title="متوسط ساعات العمل" value="38" icon={Clock} description="أسبوعياً" />
-        <StatCard title="تأخير/غياب" value="12" icon={AlertTriangle} description="هذا الشهر" />
+        <StatCard title="إجمالي الموظفين" value="85" icon={Users} description="+5 هذا الشهر" onClick={handleStatCardClick} />
+        <StatCard title="موظفون في الدوام" value="65" icon={Users} description="حالياً" onClick={handleStatCardClick} />
+        <StatCard title="موظفون في إجازة" value="10" icon={Briefcase} description="اليوم" onClick={handleStatCardClick} />
+        <StatCard title="متوسط ساعات العمل" value="38" icon={Clock} description="أسبوعياً" onClick={handleStatCardClick} />
+        <StatCard title="تأخير/غياب" value="12" icon={AlertTriangle} description="هذا الشهر" onClick={handleStatCardClick} />
       </div>
 
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
@@ -89,6 +108,29 @@ export default function DashboardPage() {
           </ul>
         </CardContent>
       </Card>
+
+      <Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            {modalContent?.icon && <modalContent.icon className="h-7 w-7 mb-3 text-primary mx-auto" />}
+            <DialogTitle className="font-headline text-center text-2xl">{modalContent?.title}</DialogTitle>
+            {modalContent?.description && (
+              <DialogDescription className="font-body text-center">
+                {modalContent.description}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-5xl font-bold font-headline text-center text-primary">{modalContent?.value}</p>
+            <p className="text-sm text-muted-foreground font-body mt-6 text-center">
+              تفاصيل إضافية لهذه البطاقة ستكون متاحة هنا قريباً. يمكنك طلب تفاصيل محددة لعرضها.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsDetailModalOpen(false)} className="font-body w-full">إغلاق</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

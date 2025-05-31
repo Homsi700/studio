@@ -8,8 +8,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { PlusCircle, Edit, Trash2, Search, Loader2, KeyRound } from "lucide-react";
-import type { Employee } from '@/lib/constants';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PlusCircle, Edit, Trash2, Search, Loader2 } from "lucide-react";
+import type { Employee, Currency, PayrollSettings } from '@/lib/constants';
+import { CURRENCIES } from '@/lib/constants';
 import { getEmployees, addEmployee, updateEmployee, deleteEmployee } from '@/actions/employeeActions';
 import Image from 'next/image';
 import { useToast } from "@/hooks/use-toast";
@@ -19,7 +21,7 @@ export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [currentEmployee, setCurrentEmployee] = useState<Partial<Employee> | null>(null);
+  const [currentEmployee, setCurrentEmployee] = useState<Partial<Employee> & { payrollSettings?: Partial<PayrollSettings> } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -48,30 +50,32 @@ export default function EmployeesPage() {
   );
 
   const handleAddEmployee = () => {
-    setCurrentEmployee({});
+    setCurrentEmployee({ payrollSettings: { currency: 'SYP', baseSalary: 0 } });
     setIsFormOpen(true);
   };
 
   const handleEditEmployee = (employee: Employee) => {
-    setCurrentEmployee(employee);
+    setCurrentEmployee({
+      ...employee,
+      payrollSettings: employee.payrollSettings || { currency: 'SYP', baseSalary: 0 }
+    });
     setIsFormOpen(true);
   };
 
   const handleDeleteEmployee = async (id: string) => {
-    // Find the employee to set as current for spinner logic
     const employeeToDelete = employees.find(emp => emp.id === id);
     if (employeeToDelete) setCurrentEmployee(employeeToDelete);
     setIsSubmitting(true);
     try {
       await deleteEmployee(id);
       toast({ title: "نجاح", description: "تم حذف الموظف بنجاح." });
-      await fetchEmployees(); // Re-fetch to update the list
+      await fetchEmployees(); 
     } catch (error) {
       console.error("Failed to delete employee:", error);
       toast({ title: "خطأ", description: "فشل في حذف الموظف.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
-      setCurrentEmployee(null); // Reset current employee after delete
+      setCurrentEmployee(null); 
     }
   };
 
@@ -85,18 +89,22 @@ export default function EmployeesPage() {
       jobTitle: formData.get('jobTitle') as string,
       email: formData.get('email') as string,
       phone: formData.get('phone') as string,
-      pin: formData.get('pin') as string, // Get PIN from form
+      pin: formData.get('pin') as string,
+      payrollSettings: {
+        baseSalary: parseFloat(formData.get('baseSalary') as string) || 0,
+        currency: formData.get('currency') as Currency || 'SYP',
+      }
     };
 
     try {
-      if (currentEmployee && currentEmployee.id) { // Editing
+      if (currentEmployee && currentEmployee.id) { 
         await updateEmployee(currentEmployee.id, employeeData);
         toast({ title: "نجاح", description: "تم تعديل بيانات الموظف بنجاح." });
-      } else { // Adding
+      } else { 
         await addEmployee(employeeData);
         toast({ title: "نجاح", description: "تمت إضافة الموظف بنجاح." });
       }
-      await fetchEmployees(); // Re-fetch to update the list
+      await fetchEmployees(); 
       setIsFormOpen(false);
       setCurrentEmployee(null);
     } catch (error) {
@@ -147,8 +155,7 @@ export default function EmployeesPage() {
                     <TableHead className="font-body">الاسم</TableHead>
                     <TableHead className="font-body">القسم</TableHead>
                     <TableHead className="font-body">المسمى الوظيفي</TableHead>
-                    <TableHead className="font-body">البريد الإلكتروني</TableHead>
-                    <TableHead className="font-body">الهاتف</TableHead>
+                    <TableHead className="font-body">الراتب الأساسي</TableHead>
                     <TableHead className="font-body text-center">إجراءات</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -168,8 +175,9 @@ export default function EmployeesPage() {
                       <TableCell className="font-semibold font-body">{employee.name}</TableCell>
                       <TableCell className="font-body">{employee.department}</TableCell>
                       <TableCell className="font-body">{employee.jobTitle}</TableCell>
-                      <TableCell className="font-body">{employee.email}</TableCell>
-                      <TableCell className="font-body">{employee.phone}</TableCell>
+                      <TableCell className="font-body">
+                        {employee.payrollSettings?.baseSalary?.toLocaleString() || '0'} {employee.payrollSettings?.currency || 'SYP'}
+                      </TableCell>
                       <TableCell className="text-center">
                         <Button variant="ghost" size="icon" onClick={() => handleEditEmployee(employee)} disabled={isSubmitting}>
                           <Edit className="h-4 w-4" />
@@ -191,7 +199,7 @@ export default function EmployeesPage() {
       </Card>
 
       <Dialog open={isFormOpen} onOpenChange={(isOpen) => { if (!isSubmitting) setIsFormOpen(isOpen); }}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-headline">{currentEmployee?.id ? 'تعديل موظف' : 'إضافة موظف جديد'}</DialogTitle>
             <DialogDescription className="font-body">
@@ -222,6 +230,23 @@ export default function EmployeesPage() {
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="pin" className="text-right font-body">الرقم السري (PIN)</Label>
               <Input id="pin" name="pin" type="password" placeholder={currentEmployee?.id ? "اتركه فارغاً لعدم التغيير" : "4-6 أرقام"} className="col-span-3 font-body" disabled={isSubmitting} pattern="\d{4,6}" title="يجب أن يكون الرقم السري من 4 إلى 6 أرقام"/>
+            </div>
+             <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="baseSalary" className="text-right font-body">الراتب الأساسي</Label>
+              <Input id="baseSalary" name="baseSalary" type="number" defaultValue={currentEmployee?.payrollSettings?.baseSalary || 0} className="col-span-3 font-body" disabled={isSubmitting} step="any" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="currency" className="text-right font-body">عملة الراتب</Label>
+              <Select name="currency" defaultValue={currentEmployee?.payrollSettings?.currency || 'SYP'} disabled={isSubmitting}>
+                <SelectTrigger className="col-span-3 font-body">
+                  <SelectValue placeholder="اختر العملة" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CURRENCIES.map(c => (
+                    <SelectItem key={c} value={c} className="font-body">{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)} className="font-body" disabled={isSubmitting}>إلغاء</Button>

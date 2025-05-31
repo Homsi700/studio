@@ -10,14 +10,17 @@
       "phone": "0912345678",
       "avatarUrl": "https://placehold.co/100x100.png",
       "hashedPin": "$2a$10$abcdefghijklmnopqrstuv",
-      "baseSalary": 7500,
-      "allowances": [
-        {"id": "allow1", "name": "بدل سكن", "amount": 1000},
-        {"id": "allow2", "name": "بدل مواصلات", "amount": 300}
-      ],
-      "deductions": [
-        {"id": "deduct1", "name": "سلفة بسيطة", "amount": 200}
-      ],
+      "payrollSettings": {
+        "baseSalary": 750000,
+        "currency": "SYP",
+        "allowances": [
+          { "id": "allow1", "name": "بدل سكن", "amount": 100000 },
+          { "id": "allow2", "name": "بدل مواصلات", "amount": 30000 }
+        ],
+        "deductions": [
+          { "id": "deduct1", "name": "سلفة بسيطة", "amount": 20000 }
+        ]
+      },
       "payrollHistory": []
     },
     {
@@ -29,9 +32,12 @@
       "phone": "0987654321",
       "avatarUrl": "https://placehold.co/100x100.png",
       "hashedPin": "$2a$10$anothersecurehashedpin",
-      "baseSalary": 6000,
-      "allowances": [],
-      "deductions": [],
+      "payrollSettings": {
+        "baseSalary": 600,
+        "currency": "USD",
+        "allowances": [],
+        "deductions": []
+      },
       "payrollHistory": []
     },
     {
@@ -42,9 +48,12 @@
       "email": "khaled.w@example.com",
       "phone": "0911223344",
       "avatarUrl": "https://placehold.co/100x100.png",
-      "baseSalary": 0,
-      "allowances": [],
-      "deductions": [],
+      "payrollSettings": {
+        "baseSalary": 0,
+        "currency": "SYP",
+        "allowances": [],
+        "deductions": []
+      },
       "payrollHistory": []
     }
   ],
@@ -130,5 +139,10 @@
       "gracePeriodMinutes": 15
     }
   ],
-  "rawAttendanceEvents": []
+  "rawAttendanceEvents": [],
+  "exchangeRates": [
+    { "id": "rate1", "date": "2024-01-01", "rate": 13000 },
+    { "id": "rate2", "date": "2024-07-01", "rate": 14500 },
+    { "id": "rate3", "date": "2024-07-15", "rate": 14650 }
+  ]
 }

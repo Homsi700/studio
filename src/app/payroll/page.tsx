@@ -9,13 +9,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Edit, Trash2, Loader2, Calculator, History, X } from "lucide-react";
-import type { Employee, Allowance, Deduction, PayrollRecord, PayrollSettings } from '@/lib/constants';
+import { PlusCircle, Edit, Trash2, Loader2, Calculator, History, X, Settings2, Coins } from "lucide-react";
+import type { Employee, Allowance, Deduction, PayrollRecord, PayrollSettings, Currency, ExchangeRate } from '@/lib/constants';
+import { CURRENCIES } from '@/lib/constants';
 import { getEmployees } from '@/actions/employeeActions';
-import { updateEmployeePayrollSettings, calculateMonthlyPayroll, getPayrollHistory } from '@/actions/payrollActions';
+import { updateEmployeePayrollSettings, calculateMonthlyPayroll, getPayrollHistory, getExchangeRates, addExchangeRate } from '@/actions/payrollActions';
 import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
 import { v4 as uuidv4 } from 'uuid';
+import { format, parseISO } from 'date-fns';
 
 export default function PayrollPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -23,83 +25,100 @@ export default function PayrollPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
-  // For Edit Salary Info Dialog
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
-  const [currentBaseSalary, setCurrentBaseSalary] = useState<number | string>('');
-  const [currentAllowances, setCurrentAllowances] = useState<Allowance[]>([]);
-  const [currentDeductions, setCurrentDeductions] = useState<Deduction[]>([]);
-
-  // For Calculate Payroll Dialog
+  const [currentPayrollSettings, setCurrentPayrollSettings] = useState<PayrollSettings>({ baseSalary: 0, currency: 'SYP', allowances: [], deductions: [] });
+  
   const [isCalcModalOpen, setIsCalcModalOpen] = useState(false);
   const [selectedEmployeeIdForCalc, setSelectedEmployeeIdForCalc] = useState<string>('');
-  const [selectedMonth, setSelectedMonth] = useState<string>((new Date().getMonth()).toString()); // Default to previous month
+  const [selectedMonth, setSelectedMonth] = useState<string>((new Date().getMonth()).toString());
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
   const [calculationResult, setCalculationResult] = useState<PayrollRecord | null>(null);
 
-  // For Payroll History Dialog
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyEmployee, setHistoryEmployee] = useState<Employee | null>(null);
   const [payrollHistory, setPayrollHistory] = useState<PayrollRecord[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
+  const [isExchangeRateModalOpen, setIsExchangeRateModalOpen] = useState(false);
+  const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([]);
+  const [newRateDate, setNewRateDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [newRateValue, setNewRateValue] = useState<string>('');
 
-  const fetchEmployeesData = async () => {
+
+  const fetchPageData = async () => {
     setIsLoading(true);
     try {
-      const fetchedEmployees = await getEmployees();
-      setEmployees(fetchedEmployees);
+      const [fetchedEmployees, fetchedRates] = await Promise.all([
+        getEmployees(),
+        getExchangeRates()
+      ]);
+      setEmployees(fetchedEmployees.map(emp => ({
+        ...emp,
+        payrollSettings: emp.payrollSettings || { baseSalary: 0, currency: 'SYP', allowances: [], deductions: [] }
+      })));
+      setExchangeRates(fetchedRates.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     } catch (error) {
-      toast({ title: "خطأ", description: "فشل في جلب بيانات الموظفين.", variant: "destructive" });
+      toast({ title: "خطأ", description: "فشل في جلب بيانات الصفحة.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchEmployeesData();
+    fetchPageData();
   }, []);
 
   const openEditModal = (employee: Employee) => {
     setCurrentEmployee(employee);
-    setCurrentBaseSalary(employee.baseSalary !== undefined ? employee.baseSalary : '');
-    setCurrentAllowances(employee.allowances ? JSON.parse(JSON.stringify(employee.allowances)) : []);
-    setCurrentDeductions(employee.deductions ? JSON.parse(JSON.stringify(employee.deductions)) : []);
+    setCurrentPayrollSettings(JSON.parse(JSON.stringify(employee.payrollSettings || { baseSalary: 0, currency: 'SYP', allowances: [], deductions: [] })));
     setIsEditModalOpen(true);
   };
 
   const handleAddItem = (type: 'allowance' | 'deduction') => {
     const newItem = { id: uuidv4(), name: '', amount: 0 };
-    if (type === 'allowance') {
-      setCurrentAllowances(prev => [...prev, newItem]);
-    } else {
-      setCurrentDeductions(prev => [...prev, newItem]);
-    }
+    setCurrentPayrollSettings(prev => ({
+        ...prev,
+        [type === 'allowance' ? 'allowances' : 'deductions']: [
+            ...(prev[type === 'allowance' ? 'allowances' : 'deductions'] || []),
+            newItem
+        ]
+    }));
   };
 
   const handleItemChange = (id: string, field: 'name' | 'amount', value: string | number, type: 'allowance' | 'deduction') => {
-    const updater = type === 'allowance' ? setCurrentAllowances : setCurrentDeductions;
-    updater(prev => prev.map(item => item.id === id ? { ...item, [field]: field === 'amount' ? Number(value) || 0 : value } : item));
+     setCurrentPayrollSettings(prev => ({
+        ...prev,
+        [type === 'allowance' ? 'allowances' : 'deductions']: (prev[type === 'allowance' ? 'allowances' : 'deductions'] || []).map(item =>
+            item.id === id ? { ...item, [field]: field === 'amount' ? Number(value) || 0 : value } : item
+        )
+    }));
   };
   
   const handleRemoveItem = (id: string, type: 'allowance' | 'deduction') => {
-    const updater = type === 'allowance' ? setCurrentAllowances : setCurrentDeductions;
-    updater(prev => prev.filter(item => item.id !== id));
+    setCurrentPayrollSettings(prev => ({
+        ...prev,
+        [type === 'allowance' ? 'allowances' : 'deductions']: (prev[type === 'allowance' ? 'allowances' : 'deductions'] || []).filter(item => item.id !== id)
+    }));
   };
 
   const handleSavePayrollSettings = async () => {
-    if (!currentEmployee) return;
+    if (!currentEmployee || !currentPayrollSettings) return;
     setIsSubmitting(true);
-    const settings: PayrollSettings = {
-      baseSalary: Number(currentBaseSalary) || 0,
-      allowances: currentAllowances.filter(a => a.name.trim() !== ''),
-      deductions: currentDeductions.filter(d => d.name.trim() !== ''),
+    
+    const settingsToSave: PayrollSettings = {
+      ...currentPayrollSettings,
+      baseSalary: Number(currentPayrollSettings.baseSalary) || 0,
+      currency: currentPayrollSettings.currency || 'SYP',
+      allowances: (currentPayrollSettings.allowances || []).filter(a => a.name.trim() !== ''),
+      deductions: (currentPayrollSettings.deductions || []).filter(d => d.name.trim() !== ''),
     };
+
     try {
-      const updated = await updateEmployeePayrollSettings(currentEmployee.id, settings);
+      const updated = await updateEmployeePayrollSettings(currentEmployee.id, settingsToSave);
       if (updated) {
         toast({ title: "نجاح", description: "تم تحديث معلومات الراتب بنجاح." });
-        await fetchEmployeesData(); // Refresh employee list
+        await fetchPageData(); 
         setIsEditModalOpen(false);
       } else {
         toast({ title: "خطأ", description: "فشل في تحديث معلومات الراتب.", variant: "destructive" });
@@ -123,7 +142,7 @@ export default function PayrollPage() {
         if (result.success && result.payrollRecord) {
             toast({ title: "نجاح", description: result.message });
             setCalculationResult(result.payrollRecord);
-            await fetchEmployeesData(); // Refresh employee data as payrollHistory is updated
+            await fetchPageData(); 
         } else {
             toast({ title: "خطأ", description: result.message, variant: "destructive" });
         }
@@ -148,6 +167,26 @@ export default function PayrollPage() {
       setIsLoadingHistory(false);
     }
   };
+
+  const handleAddExchangeRate = async () => {
+    if (!newRateDate || !newRateValue || parseFloat(newRateValue) <= 0) {
+      toast({ title: "خطأ في الإدخال", description: "يرجى إدخال تاريخ صحيح وسعر صرف موجب.", variant: "destructive" });
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await addExchangeRate({ date: newRateDate, rate: parseFloat(newRateValue) });
+      toast({ title: "نجاح", description: "تم إضافة سعر الصرف بنجاح." });
+      setNewRateDate(format(new Date(), 'yyyy-MM-dd'));
+      setNewRateValue('');
+      await fetchPageData(); // Refresh rates
+      // setIsExchangeRateModalOpen(false); // Optionally close modal
+    } catch (error: any) {
+      toast({ title: "خطأ", description: error.message || "فشل في إضافة سعر الصرف.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
   
   const months = Array.from({length: 12}, (_, i) => ({ value: i.toString(), label: new Date(0, i).toLocaleString('ar-SA', { month: 'long' }) }));
   const currentYear = new Date().getFullYear();
@@ -156,7 +195,12 @@ export default function PayrollPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold font-headline">إدارة الرواتب</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold font-headline">إدارة الرواتب</h1>
+        <Button variant="outline" onClick={() => setIsExchangeRateModalOpen(true)} className="font-body">
+          <Coins className="mr-2 h-4 w-4" /> إدارة أسعار الصرف
+        </Button>
+      </div>
 
       <Card>
         <CardHeader>
@@ -167,7 +211,6 @@ export default function PayrollPage() {
           {isLoading ? (
             <div className="flex justify-center items-center py-10">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="font-body ml-2">جاري تحميل الموظفين...</p>
             </div>
           ) : (
             <Table>
@@ -191,12 +234,18 @@ export default function PayrollPage() {
                         <span className="font-semibold font-body">{employee.name}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="font-body">{employee.baseSalary !== undefined ? `${employee.baseSalary.toLocaleString()} د.س` : 'غير محدد'}</TableCell>
-                    <TableCell className="font-body">{(employee.allowances || []).reduce((sum, a) => sum + a.amount, 0).toLocaleString()} د.س</TableCell>
-                    <TableCell className="font-body">{(employee.deductions || []).reduce((sum, d) => sum + d.amount, 0).toLocaleString()} د.س</TableCell>
+                    <TableCell className="font-body">
+                        {employee.payrollSettings?.baseSalary?.toLocaleString() || '0'} {employee.payrollSettings?.currency}
+                    </TableCell>
+                    <TableCell className="font-body">
+                        {(employee.payrollSettings?.allowances || []).reduce((sum, a) => sum + a.amount, 0).toLocaleString()} {employee.payrollSettings?.currency}
+                    </TableCell>
+                    <TableCell className="font-body">
+                        {(employee.payrollSettings?.deductions || []).reduce((sum, d) => sum + d.amount, 0).toLocaleString()} {employee.payrollSettings?.currency}
+                    </TableCell>
                     <TableCell className="text-center space-x-1">
                       <Button variant="outline" size="sm" onClick={() => openEditModal(employee)} className="font-body">
-                        <Edit className="mr-1 h-3 w-3" /> تعديل
+                        <Settings2 className="mr-1 h-3 w-3" /> تعديل الإعدادات
                       </Button>
                        <Button variant="outline" size="sm" onClick={() => openHistoryModal(employee)} className="font-body">
                         <History className="mr-1 h-3 w-3" /> السجل
@@ -213,9 +262,6 @@ export default function PayrollPage() {
       <Card>
         <CardHeader>
             <CardTitle className="font-headline">حساب كشوف الرواتب الشهرية</CardTitle>
-            <CardDescription className="font-body">
-                اختر الموظف والشهر والسنة لحساب وحفظ كشف الراتب.
-            </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
@@ -263,10 +309,13 @@ export default function PayrollPage() {
                 <Card className="w-full">
                     <CardHeader><CardTitle className="font-headline text-lg">نتيجة الحساب لـ {employees.find(e=>e.id === selectedEmployeeIdForCalc)?.name} - {months.find(m=>m.value === selectedMonth)?.label} {selectedYear}</CardTitle></CardHeader>
                     <CardContent className="text-sm font-body space-y-1">
-                        <p>الراتب الإجمالي (الأساسي): {calculationResult.grossSalary.toLocaleString()} د.س</p>
-                        <p>إجمالي البدلات: {calculationResult.totalAllowances.toLocaleString()} د.س</p>
-                        <p>إجمالي الخصومات (تشمل التأخير/الغياب والخصومات اليدوية): {calculationResult.totalDeductions.toLocaleString()} د.س</p>
-                        <p className="font-semibold text-primary">صافي الراتب المستحق: {calculationResult.netSalary.toLocaleString()} د.س</p>
+                        <p>الراتب الأساسي: {calculationResult.baseSalarySnapshot.toLocaleString()} {calculationResult.baseSalaryCurrency}</p>
+                        <p>إجمالي البدلات: {calculationResult.totalAllowances.toLocaleString()} {calculationResult.baseSalaryCurrency}</p>
+                        <p>إجمالي الخصومات (أداء + ثابتة): {calculationResult.totalDeductions.toLocaleString()} {calculationResult.baseSalaryCurrency}</p>
+                        <p className="font-semibold">صافي الراتب ({calculationResult.baseSalaryCurrency}): {calculationResult.netSalaryInBaseCurrency.toLocaleString()} {calculationResult.baseSalaryCurrency}</p>
+                        {calculationResult.netSalaryInConvertedCurrency !== undefined && calculationResult.convertedToCurrency && (
+                             <p className="font-semibold text-primary">صافي الراتب ({calculationResult.convertedToCurrency}): {calculationResult.netSalaryInConvertedCurrency.toLocaleString()} {calculationResult.convertedToCurrency} (سعر الصرف: {calculationResult.exchangeRateApplied})</p>
+                        )}
                         <p className="text-xs text-muted-foreground">ملخص الحضور: أيام العمل الفعلية: {calculationResult.attendanceSummary.actualWorkedDays}, أيام الغياب: {calculationResult.attendanceSummary.totalAbsentDays}, إجمالي دقائق التأخير: {calculationResult.attendanceSummary.totalLateMinutes}</p>
                         <p className="text-xs text-muted-foreground">ملاحظات: {calculationResult.notes}</p>
                     </CardContent>
@@ -275,35 +324,45 @@ export default function PayrollPage() {
         </CardFooter>
       </Card>
 
-      {/* Edit Salary Info Dialog */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="font-headline">تعديل معلومات راتب: {currentEmployee?.name}</DialogTitle>
-            <DialogDescription className="font-body">
-              أدخل الراتب الأساسي وقم بإدارة البدلات والخصومات المتكررة للموظف.
-            </DialogDescription>
+            <DialogTitle className="font-headline">تعديل إعدادات راتب: {currentEmployee?.name}</DialogTitle>
           </DialogHeader>
           <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto px-2">
             <div>
-              <Label htmlFor="baseSalary" className="font-body">الراتب الأساسي الشهري (د.س)</Label>
-              <Input id="baseSalary" type="number" value={currentBaseSalary} onChange={(e) => setCurrentBaseSalary(e.target.value)} className="font-body mt-1" placeholder="مثال: 50000" />
+              <Label htmlFor="baseSalaryEdit" className="font-body">الراتب الأساسي الشهري</Label>
+              <Input id="baseSalaryEdit" type="number" value={currentPayrollSettings.baseSalary || ''} 
+                     onChange={(e) => setCurrentPayrollSettings(s => ({...s, baseSalary: parseFloat(e.target.value) || 0}))} 
+                     className="font-body mt-1" placeholder="مثال: 500000" />
+            </div>
+            <div>
+              <Label htmlFor="currencyEdit" className="font-body">عملة الراتب</Label>
+              <Select value={currentPayrollSettings.currency || 'SYP'} 
+                      onValueChange={(value) => setCurrentPayrollSettings(s => ({...s, currency: value as Currency}))}>
+                <SelectTrigger id="currencyEdit" className="font-body mt-1">
+                  <SelectValue placeholder="اختر العملة" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CURRENCIES.map(c => <SelectItem key={c} value={c} className="font-body">{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
 
-            {['allowance', 'deduction'].map(type => (
+            {['allowances', 'deductions'].map(type => (
               <div key={type}>
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-headline text-lg">{type === 'allowance' ? 'البدلات' : 'الخصومات (الافتراضية/المتكررة)'}</h3>
+                  <h3 className="font-headline text-lg">{type === 'allowances' ? 'البدلات' : 'الخصومات (الافتراضية/المتكررة)'}</h3>
                   <Button variant="outline" size="sm" onClick={() => handleAddItem(type as 'allowance' | 'deduction')} className="font-body">
-                    <PlusCircle className="mr-1 h-4 w-4" /> إضافة {type === 'allowance' ? 'بدل' : 'خصم'}
+                    <PlusCircle className="mr-1 h-4 w-4" /> إضافة
                   </Button>
                 </div>
-                {(type === 'allowance' ? currentAllowances : currentDeductions).map((item, index) => (
+                {(currentPayrollSettings[type as 'allowances' | 'deductions'] || []).map((item) => (
                   <div key={item.id} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center mb-2 p-2 border rounded-md">
                     <Input 
                       value={item.name} 
                       onChange={(e) => handleItemChange(item.id, 'name', e.target.value, type as 'allowance' | 'deduction')} 
-                      placeholder={type === 'allowance' ? "اسم البدل (مثال: بدل سكن)" : "اسم الخصم (مثال: سلفة)"}
+                      placeholder={type === 'allowances' ? "اسم البدل" : "اسم الخصم"}
                       className="font-body" 
                     />
                     <Input 
@@ -318,8 +377,8 @@ export default function PayrollPage() {
                     </Button>
                   </div>
                 ))}
-                {(type === 'allowance' ? currentAllowances.length === 0 : currentDeductions.length === 0) && (
-                    <p className="text-sm text-muted-foreground font-body">لا يوجد {type === 'allowance' ? 'بدلات' : 'خصومات'} حالياً.</p>
+                {(currentPayrollSettings[type as 'allowances' | 'deductions'] || []).length === 0 && (
+                    <p className="text-sm text-muted-foreground font-body">لا يوجد {type === 'allowances' ? 'بدلات' : 'خصومات'} حالياً.</p>
                 )}
               </div>
             ))}
@@ -334,7 +393,6 @@ export default function PayrollPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Payroll History Dialog */}
       <Dialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
@@ -348,10 +406,8 @@ export default function PayrollPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="font-body">الشهر/السنة</TableHead>
-                    <TableHead className="font-body">الراتب الإجمالي</TableHead>
-                    <TableHead className="font-body">إجمالي البدلات</TableHead>
-                    <TableHead className="font-body">إجمالي الخصومات</TableHead>
-                    <TableHead className="font-body">صافي الراتب</TableHead>
+                    <TableHead className="font-body">صافي الراتب ({historyEmployee?.payrollSettings?.currency})</TableHead>
+                    <TableHead className="font-body">صافي الراتب (محول)</TableHead>
                     <TableHead className="font-body">تاريخ الحساب</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -359,10 +415,12 @@ export default function PayrollPage() {
                   {payrollHistory.sort((a,b) => new Date(b.calculationDate).getTime() - new Date(a.calculationDate).getTime()).map(record => (
                     <TableRow key={record.id}>
                       <TableCell className="font-body">{record.month}/{record.year}</TableCell>
-                      <TableCell className="font-body">{record.grossSalary.toLocaleString()} د.س</TableCell>
-                      <TableCell className="font-body">{record.totalAllowances.toLocaleString()} د.س</TableCell>
-                      <TableCell className="font-body">{record.totalDeductions.toLocaleString()} د.س</TableCell>
-                      <TableCell className="font-body font-semibold">{record.netSalary.toLocaleString()} د.س</TableCell>
+                      <TableCell className="font-body font-semibold">{record.netSalaryInBaseCurrency.toLocaleString()} {record.baseSalaryCurrency}</TableCell>
+                      <TableCell className="font-body">
+                        {record.netSalaryInConvertedCurrency !== undefined && record.convertedToCurrency ? 
+                         `${record.netSalaryInConvertedCurrency.toLocaleString()} ${record.convertedToCurrency} (x${record.exchangeRateApplied})`
+                         : 'N/A'}
+                      </TableCell>
                       <TableCell className="font-body">{new Date(record.calculationDate).toLocaleDateString('ar-SA')}</TableCell>
                     </TableRow>
                   ))}
@@ -375,6 +433,53 @@ export default function PayrollPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsHistoryModalOpen(false)} className="font-body">إغلاق</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isExchangeRateModalOpen} onOpenChange={setIsExchangeRateModalOpen}>
+        <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+                <DialogTitle className="font-headline">إدارة أسعار صرف الدولار الأمريكي (مقابل الليرة السورية)</DialogTitle>
+                <DialogDescription className="font-body">
+                    أضف أسعار صرف تاريخية. سيتم استخدام أحدث سعر صرف مطابق أو سابق لتاريخ حساب الراتب.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 items-end">
+                    <div>
+                        <Label htmlFor="newRateDate" className="font-body">التاريخ</Label>
+                        <Input id="newRateDate" type="date" value={newRateDate} onChange={e => setNewRateDate(e.target.value)} className="font-body mt-1" />
+                    </div>
+                    <div>
+                        <Label htmlFor="newRateValue" className="font-body">سعر 1 USD (بالـ SYP)</Label>
+                        <Input id="newRateValue" type="number" value={newRateValue} onChange={e => setNewRateValue(e.target.value)} className="font-body mt-1" placeholder="مثال: 14500" />
+                    </div>
+                    <Button onClick={handleAddExchangeRate} disabled={isSubmitting} className="font-body sm:self-end">
+                        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusCircle className="h-4 w-4"/>} إضافة
+                    </Button>
+                </div>
+                <Card>
+                    <CardHeader><CardTitle className="text-base font-headline">أسعار الصرف الحالية (الأحدث أولاً)</CardTitle></CardHeader>
+                    <CardContent className="max-h-60 overflow-y-auto">
+                        {exchangeRates.length > 0 ? (
+                            <Table>
+                                <TableHeader><TableRow><TableHead>التاريخ</TableHead><TableHead>1 USD = SYP</TableHead></TableRow></TableHeader>
+                                <TableBody>
+                                    {exchangeRates.map(rate => (
+                                        <TableRow key={rate.id}>
+                                            <TableCell>{format(parseISO(rate.date), 'yyyy/MM/dd')}</TableCell>
+                                            <TableCell>{rate.rate.toLocaleString()}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        ) : <p className="text-muted-foreground text-sm font-body">لا توجد أسعار صرف مسجلة.</p>}
+                    </CardContent>
+                </Card>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsExchangeRateModalOpen(false)} className="font-body">إغلاق</Button>
+            </DialogFooter>
         </DialogContent>
       </Dialog>
 

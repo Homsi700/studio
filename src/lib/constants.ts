@@ -1,6 +1,6 @@
 
 import type { LucideIcon } from 'lucide-react';
-import { LayoutDashboard, Users, CalendarDays, Briefcase, Settings, Lightbulb, GanttChartSquare, Fingerprint, Wallet } from 'lucide-react';
+import { LayoutDashboard, Users, CalendarDays, Briefcase, Settings, Lightbulb, GanttChartSquare, Fingerprint, Wallet, TrendingUp, Landmark } from 'lucide-react';
 
 export interface NavItem {
   href: string;
@@ -16,38 +16,65 @@ export const navItems: NavItem[] = [
   { href: '/leaves', label: 'إدارة الإجازات', icon: Briefcase, tooltip: 'Leaves' },
   { href: '/shifts', label: 'إدارة الورديات', icon: GanttChartSquare, tooltip: 'Shifts' },
   { href: '/payroll', label: 'إدارة الرواتب', icon: Wallet, tooltip: 'Payroll' },
+  { href: '/reports', label: 'التقارير', icon: TrendingUp, tooltip: 'Reports' },
   { href: '/insights', label: 'تحليلات الحضور', icon: Lightbulb, tooltip: 'Insights' },
   { href: '/checkin-checkout', label: 'تسجيل الدخول/الخروج', icon: Fingerprint, tooltip: 'Check-in/Out' },
   { href: '/settings', label: 'الإعدادات', icon: Settings, tooltip: 'Settings' },
 ];
 
+export type Currency = 'SYP' | 'USD';
+export const CURRENCIES: Currency[] = ['SYP', 'USD'];
+
+export interface ExchangeRate {
+  id: string;
+  date: string; // YYYY-MM-DD
+  rate: number; // Represents 1 USD to SYP value, e.g., 14500
+}
+
 export interface Allowance {
   id: string;
   name: string;
-  amount: number;
+  amount: number; // Amount in the employee's base currency
 }
 
 export interface Deduction {
   id: string;
   name: string;
-  amount: number;
+  amount: number; // Amount in the employee's base currency
+}
+
+export interface PayrollSettings {
+  baseSalary?: number;
+  currency?: Currency;
+  allowances?: Allowance[];
+  deductions?: Deduction[];
 }
 
 export interface PayrollRecord {
   id: string;
+  employeeId: string; // Added for easier lookup if needed
   month: number; // 1-12
   year: number;
-  grossSalary: number;
-  totalAllowances: number;
-  totalDeductions: number; // Includes fixed deductions and situational (lates/absences)
-  netSalary: number;
+  
+  baseSalarySnapshot: number; // Snapshot of base salary at time of calculation
+  baseSalaryCurrency: Currency; // Employee's base currency
+
+  grossSalary: number; // Calculated gross salary in base currency
+  totalAllowances: number; // In base currency
+  totalDeductions: number; // Includes fixed deductions and situational (lates/absences), in base currency
+  netSalaryInBaseCurrency: number;
+  
+  exchangeRateApplied?: number; // e.g., USD_to_SYP rate used
+  convertedToCurrency?: Currency; // The currency it was converted to (opposite of base)
+  netSalaryInConvertedCurrency?: number;
+
   calculationDate: string; // ISO date string
   attendanceSummary: {
-    totalWorkingHours?: number; // Optional for now
+    totalWorkingHours?: number; 
     totalLateMinutes?: number;
     totalAbsentDays?: number;
     daysInMonth?: number;
-    workingDaysInMonth?: number; // Based on configuration or standard
+    workingDaysInMonth?: number; 
     actualWorkedDays?: number;
   };
   notes?: string;
@@ -62,9 +89,7 @@ export interface Employee {
   phone: string;
   avatarUrl?: string;
   hashedPin?: string;
-  baseSalary?: number;
-  allowances?: Allowance[];
-  deductions?: Deduction[]; // Default/recurring deductions
+  payrollSettings?: PayrollSettings; // Consolidated payroll info
   payrollHistory?: PayrollRecord[];
 }
 
@@ -77,8 +102,8 @@ export interface AttendanceRecord {
   clockOut: string | null; // HH:MM or null if still clocked in
   totalDuration: string | null; // "X hours Y minutes" or null
   status: 'onTime' | 'late' | 'earlyLeave' | 'absent' | 'onDuty';
-  method?: 'PIN' | 'Fingerprint' | 'Manual'; // Added method
-  deviceId?: string; // Added deviceId
+  method?: 'PIN' | 'Fingerprint' | 'Manual'; 
+  deviceId?: string; 
 }
 
 export type LeaveRequestStatus = 'pending' | 'approved' | 'rejected';
@@ -101,39 +126,39 @@ export interface Shift {
   gracePeriodMinutes: number;
 }
 
-// New interface for raw attendance events from external sources (e.g., fingerprint)
 export interface RawAttendanceEvent {
   id: string;
   employeeId: string;
-  timestamp: string; // ISO Date string for the event
-  type: 'clockIn' | 'clockOut' | 'unknown'; // The type of event
-  method: 'Fingerprint' | 'OtherExternal'; // Method of recording
-  deviceId?: string; // Optional device ID
+  timestamp: string; 
+  type: 'clockIn' | 'clockOut' | 'unknown'; 
+  method: 'Fingerprint' | 'OtherExternal' | 'PIN'; 
+  deviceId?: string; 
 }
 
-// Interface for the data expected by the recordExternalAttendance Server Action
 export interface ExternalAttendanceData {
   employeeId: string;
-  timestamp: string; // ISO string or a string that can be parsed to a Date
+  timestamp: string; 
   eventType: 'clockIn' | 'clockOut' | 'unknown';
   deviceSecret: string;
   deviceId?: string;
 }
 
-
 // Mock data - ensure payroll fields are optional or have defaults
 export const mockEmployees: Employee[] = [
   { 
     id: '1', name: 'أحمد محمود', department: 'التكنولوجيا', jobTitle: 'مهندس برمجيات', email: 'ahmad.m@example.com', phone: '0912345678', avatarUrl: 'https://placehold.co/100x100.png',
-    baseSalary: 0, allowances: [], deductions: [], payrollHistory: []
+    payrollSettings: { baseSalary: 750000, currency: 'SYP', allowances: [{id: 'alw1', name: 'بدل سكن', amount:100000}], deductions: [] },
+    payrollHistory: []
   },
   { 
     id: '2', name: 'فاطمة علي', department: 'الموارد البشرية', jobTitle: 'مسؤول موارد بشرية', email: 'fatima.a@example.com', phone: '0987654321', avatarUrl: 'https://placehold.co/100x100.png',
-    baseSalary: 0, allowances: [], deductions: [], payrollHistory: []
+    payrollSettings: { baseSalary: 500, currency: 'USD', allowances: [], deductions: [] },
+    payrollHistory: []
   },
   { 
     id: '3', name: 'خالد وليد', department: 'التسويق', jobTitle: 'أخصائي تسويق', email: 'khaled.w@example.com', phone: '0911223344', avatarUrl: 'https://placehold.co/100x100.png',
-    baseSalary: 0, allowances: [], deductions: [], payrollHistory: []
+    payrollSettings: { baseSalary: 0, currency: 'SYP' },
+    payrollHistory: []
   },
 ];
 
@@ -148,4 +173,8 @@ export const mockLeaveRequests: LeaveRequest[] = [
   { id: 'leave2', employeeId: '1', employeeName: 'أحمد محمود', startDate: '2024-07-29', endDate: '2024-07-29', reason: 'موعد طبي', status: 'approved' },
 ];
 
-export const mockRawAttendanceEvents: RawAttendanceEvent[] = []; // Start with no raw events
+export const mockRawAttendanceEvents: RawAttendanceEvent[] = []; 
+export const mockExchangeRates: ExchangeRate[] = [
+  { id: 'rate1', date: '2024-01-01', rate: 13000 },
+  { id: 'rate2', date: '2024-07-01', rate: 14500 },
+];

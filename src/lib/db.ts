@@ -1,7 +1,7 @@
 
 import { JSONFilePreset } from 'lowdb/node';
-import type { Employee, AttendanceRecord, LeaveRequest, Shift, RawAttendanceEvent } from './constants';
-import { mockEmployees, mockAttendance, mockLeaveRequests, mockRawAttendanceEvents } from './constants';
+import type { Employee, AttendanceRecord, LeaveRequest, Shift, RawAttendanceEvent, ExchangeRate, Currency, PayrollSettings } from './constants';
+import { mockEmployees, mockAttendance, mockLeaveRequests, mockRawAttendanceEvents, mockExchangeRates, CURRENCIES } from './constants';
 
 const initialShifts: Shift[] = [
   { id: '1', name: 'الوردية الصباحية', startTime: '09:00', endTime: '17:00', gracePeriodMinutes: 15 },
@@ -13,24 +13,29 @@ interface Data {
   attendanceRecords: AttendanceRecord[];
   leaveRequests: LeaveRequest[];
   shifts: Shift[];
-  rawAttendanceEvents: RawAttendanceEvent[]; // New collection for raw events
+  rawAttendanceEvents: RawAttendanceEvent[];
+  exchangeRates: ExchangeRate[];
 }
 
 const defaultData: Data = {
   employees: mockEmployees.map(emp => ({
     ...emp,
-    baseSalary: emp.baseSalary || 0,
-    allowances: emp.allowances || [],
-    deductions: emp.deductions || [],
+    payrollSettings: {
+      baseSalary: emp.payrollSettings?.baseSalary || 0,
+      currency: emp.payrollSettings?.currency || 'SYP',
+      allowances: emp.payrollSettings?.allowances || [],
+      deductions: emp.payrollSettings?.deductions || [],
+    },
     payrollHistory: emp.payrollHistory || [],
   })),
-  attendanceRecords: mockAttendance.map(rec => ({ // ensure mock records have method
+  attendanceRecords: mockAttendance.map(rec => ({ 
     ...rec,
-    method: rec.method || 'Manual' // Default to Manual if not specified
+    method: rec.method || 'Manual' 
   })),
   leaveRequests: mockLeaveRequests,
   shifts: initialShifts,
-  rawAttendanceEvents: mockRawAttendanceEvents, // Initialize with empty array
+  rawAttendanceEvents: mockRawAttendanceEvents,
+  exchangeRates: mockExchangeRates,
 };
 
 let dbInstance: any;
@@ -46,38 +51,48 @@ export async function getDb() {
       db.data = { ...defaultData };
       needsWrite = true;
     }
-
-    // Ensure employees have new payroll fields
+    
     if (!db.data.employees || db.data.employees.length === 0) {
       db.data.employees = defaultData.employees;
       needsWrite = true;
     } else {
-      db.data.employees = db.data.employees.map(emp => ({
-        ...emp,
-        baseSalary: emp.baseSalary === undefined ? 0 : emp.baseSalary,
-        allowances: emp.allowances || [],
-        deductions: emp.deductions || [],
-        payrollHistory: emp.payrollHistory || [],
-      }));
-      if (db.data.employees.length > 0 && db.data.employees[0].baseSalary === undefined) {
+      db.data.employees = db.data.employees.map((emp: Employee) => {
+        const defaultSettings: PayrollSettings = {
+          baseSalary: 0,
+          currency: 'SYP',
+          allowances: [],
+          deductions: [],
+        };
+        const currentSettings = emp.payrollSettings || defaultSettings;
+        return {
+          ...emp,
+          payrollSettings: {
+            baseSalary: currentSettings.baseSalary === undefined ? 0 : currentSettings.baseSalary,
+            currency: currentSettings.currency || 'SYP',
+            allowances: currentSettings.allowances || [],
+            deductions: currentSettings.deductions || [],
+          },
+          payrollHistory: emp.payrollHistory || [],
+        };
+      });
+      // Heuristic to check if migration is needed. A more robust check might be a version number.
+      if (db.data.employees.length > 0 && (db.data.employees[0].payrollSettings === undefined || db.data.employees[0].payrollSettings.currency === undefined)) {
         needsWrite = true;
       }
     }
     
-    // Ensure attendanceRecords have method field
     if (!db.data.attendanceRecords) {
         db.data.attendanceRecords = defaultData.attendanceRecords;
         needsWrite = true;
     } else {
         db.data.attendanceRecords = db.data.attendanceRecords.map(rec => ({
             ...rec,
-            method: rec.method || 'Manual' // Default if missing
+            method: rec.method || 'Manual'
         }));
         if (db.data.attendanceRecords.length > 0 && db.data.attendanceRecords[0].method === undefined) {
             needsWrite = true;
         }
     }
-
 
     if (!db.data.leaveRequests || db.data.leaveRequests.length === 0) {
       db.data.leaveRequests = defaultData.leaveRequests;
@@ -87,8 +102,12 @@ export async function getDb() {
       db.data.shifts = defaultData.shifts;
       needsWrite = true;
     }
-    if (!db.data.rawAttendanceEvents) { // Check for the new collection
+    if (!db.data.rawAttendanceEvents) { 
       db.data.rawAttendanceEvents = defaultData.rawAttendanceEvents;
+      needsWrite = true;
+    }
+     if (!db.data.exchangeRates) {
+      db.data.exchangeRates = defaultData.exchangeRates;
       needsWrite = true;
     }
 

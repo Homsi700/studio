@@ -39,16 +39,19 @@ export interface AttendanceRecord {
   status: 'onTime' | 'late' | 'earlyLeave' | 'absent';
 }
 
+export type LeaveRequestStatus = 'pending' | 'approved' | 'rejected';
+
 export interface LeaveRequest {
   id: string;
   employeeId: string;
-  employeeName: string;
+  employeeName: string; // Kept for easier display, but can be looked up if needed
   startDate: string;
   endDate: string;
   reason: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: LeaveRequestStatus;
 }
 
+// Mock data is kept for reference or fallback, but app will primarily use db.json
 export const mockEmployees: Employee[] = [
   { id: '1', name: 'أحمد محمود', department: 'التكنولوجيا', jobTitle: 'مهندس برمجيات', email: 'ahmad.m@example.com', phone: '0912345678', avatarUrl: 'https://placehold.co/100x100.png' },
   { id: '2', name: 'فاطمة علي', department: 'الموارد البشرية', jobTitle: 'مسؤول موارد بشرية', email: 'fatima.a@example.com', phone: '0987654321', avatarUrl: 'https://placehold.co/100x100.png' },

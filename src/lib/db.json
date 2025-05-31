@@ -1,6 +1,99 @@
 {
-  "employees": [],
-  "attendanceRecords": [],
-  "leaveRequests": [],
-  "shifts": []
+  "employees": [
+    {
+      "id": "1",
+      "name": "أحمد محمود",
+      "department": "التكنولوجيا",
+      "jobTitle": "مهندس برمجيات",
+      "email": "ahmad.m@example.com",
+      "phone": "0912345678",
+      "avatarUrl": "https://placehold.co/100x100.png"
+    },
+    {
+      "id": "2",
+      "name": "فاطمة علي",
+      "department": "الموارد البشرية",
+      "jobTitle": "مسؤول موارد بشرية",
+      "email": "fatima.a@example.com",
+      "phone": "0987654321",
+      "avatarUrl": "https://placehold.co/100x100.png"
+    },
+    {
+      "id": "3",
+      "name": "خالد وليد",
+      "department": "التسويق",
+      "jobTitle": "أخصائي تسويق",
+      "email": "khaled.w@example.com",
+      "phone": "0911223344",
+      "avatarUrl": "https://placehold.co/100x100.png"
+    }
+  ],
+  "attendanceRecords": [
+    {
+      "id": "att1",
+      "employeeId": "1",
+      "employeeName": "أحمد محمود",
+      "date": "2024-07-28",
+      "clockIn": "09:00",
+      "clockOut": "17:00",
+      "totalDuration": "8 ساعات",
+      "status": "onTime"
+    },
+    {
+      "id": "att2",
+      "employeeId": "2",
+      "employeeName": "فاطمة علي",
+      "date": "2024-07-28",
+      "clockIn": "09:15",
+      "clockOut": "17:00",
+      "totalDuration": "7 ساعات 45 دقيقة",
+      "status": "late"
+    },
+    {
+      "id": "att3",
+      "employeeId": "1",
+      "employeeName": "أحمد محمود",
+      "date": "2024-07-27",
+      "clockIn": "08:55",
+      "clockOut": "16:30",
+      "totalDuration": "7 ساعات 35 دقيقة",
+      "status": "earlyLeave"
+    }
+  ],
+  "leaveRequests": [
+    {
+      "id": "leave1",
+      "employeeId": "3",
+      "employeeName": "خالد وليد",
+      "startDate": "2024-08-01",
+      "endDate": "2024-08-05",
+      "reason": "إجازة سنوية",
+      "status": "pending"
+    },
+    {
+      "id": "leave2",
+      "employeeId": "1",
+      "employeeName": "أحمد محمود",
+      "startDate": "2024-07-29",
+      "endDate": "2024-07-29",
+      "reason": "موعد طبي",
+      "status": "approved"
+    }
+  ],
+  "shifts": [
+    {
+      "id": "1",
+      "name": "الوردية الصباحية",
+      "startTime": "09:00",
+      "endTime": "17:00",
+      "gracePeriodMinutes": 15
+    },
+    {
+      "id": "2",
+      "name": "الوردية المسائية",
+      "startTime": "17:00",
+      "endTime": "01:00",
+      "gracePeriodMinutes": 15
+    }
+  ]
 }

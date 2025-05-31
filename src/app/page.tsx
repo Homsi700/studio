@@ -1,3 +1,5 @@
+"use client";
+
 import StatCard from "@/components/StatCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Briefcase, Clock, BarChart3, PieChart, TrendingUp, AlertTriangle } from "lucide-react";

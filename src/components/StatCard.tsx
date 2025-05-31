@@ -1,22 +1,33 @@
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface StatCardData {
+// Define standard card types
+export enum DashboardCardType {
+  TotalEmployees = 'TotalEmployees',
+  EmployeesOnDuty = 'EmployeesOnDuty',
+  EmployeesOnLeave = 'EmployeesOnLeave',
+  AvgWorkingHours = 'AvgWorkingHours',
+  LatesAbsences = 'LatesAbsences',
+}
+
+export interface StatCardData {
   title: string;
   value: string | number;
   icon: LucideIcon;
   description?: string;
+  cardType: DashboardCardType; // Added cardType
 }
 
 interface StatCardProps extends StatCardData {
   onClick?: (data: StatCardData) => void;
 }
 
-export default function StatCard({ title, value, icon: Icon, description, onClick }: StatCardProps) {
+export default function StatCard({ title, value, icon: Icon, description, cardType, onClick }: StatCardProps) {
   const handleClick = () => {
     if (onClick) {
-      onClick({ title, value, icon: Icon, description });
+      onClick({ title, value, icon: Icon, description, cardType });
     }
   };
 

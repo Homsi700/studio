@@ -9,7 +9,16 @@
       "email": "ahmad.m@example.com",
       "phone": "0912345678",
       "avatarUrl": "https://placehold.co/100x100.png",
-      "hashedPin": "$2a$10$abcdefghijklmnopqrstuv" 
+      "hashedPin": "$2a$10$abcdefghijklmnopqrstuv",
+      "baseSalary": 7500,
+      "allowances": [
+        {"id": "allow1", "name": "بدل سكن", "amount": 1000},
+        {"id": "allow2", "name": "بدل مواصلات", "amount": 300}
+      ],
+      "deductions": [
+        {"id": "deduct1", "name": "سلفة بسيطة", "amount": 200}
+      ],
+      "payrollHistory": []
     },
     {
       "id": "2",
@@ -18,7 +27,11 @@
       "jobTitle": "مسؤول موارد بشرية",
       "email": "fatima.a@example.com",
       "phone": "0987654321",
-      "avatarUrl": "https://placehold.co/100x100.png"
+      "avatarUrl": "https://placehold.co/100x100.png",
+      "baseSalary": 6000,
+      "allowances": [],
+      "deductions": [],
+      "payrollHistory": []
     },
     {
       "id": "3",
@@ -27,7 +40,11 @@
       "jobTitle": "أخصائي تسويق",
       "email": "khaled.w@example.com",
       "phone": "0911223344",
-      "avatarUrl": "https://placehold.co/100x100.png"
+      "avatarUrl": "https://placehold.co/100x100.png",
+      "baseSalary": 0,
+      "allowances": [],
+      "deductions": [],
+      "payrollHistory": []
     }
   ],
   "attendanceRecords": [
@@ -60,6 +77,16 @@
       "clockOut": "16:30",
       "totalDuration": "7 ساعات 35 دقيقة",
       "status": "earlyLeave"
+    },
+    {
+      "id": "att4",
+      "employeeId": "1",
+      "employeeName": "أحمد محمود",
+      "date": "2024-07-29",
+      "clockIn": "09:00",
+      "clockOut": "17:05",
+      "totalDuration": "8 ساعات 5 دقائق",
+      "status": "onTime"
     }
   ],
   "leaveRequests": [

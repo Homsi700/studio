@@ -1,65 +1,83 @@
-import { JSONFilePreset } from 'lowdb/node';
-import type { Employee, AttendanceRecord, LeaveRequest } from './constants';
-import { mockEmployees, mockAttendance, mockLeaveRequests, navItems as allNavItems } from './constants'; // Assuming shifts are part of constants too
 
-// Define the structure for shifts if not already in constants.ts
-// For now, I'll assume a basic shift structure.
-export interface Shift {
-  id: string;
-  name: string;
-  startTime: string;
-  endTime: string;
-  gracePeriodMinutes: number;
-}
+import { JSONFilePreset } from 'lowdb/node';
+import type { Employee, AttendanceRecord, LeaveRequest, Shift, PayrollRecord, Allowance, Deduction } from './constants'; // Added PayrollRecord, Allowance, Deduction
+import { mockEmployees, mockAttendance, mockLeaveRequests } from './constants';
 
 const initialShifts: Shift[] = [
   { id: '1', name: 'الوردية الصباحية', startTime: '09:00', endTime: '17:00', gracePeriodMinutes: 15 },
   { id: '2', name: 'الوردية المسائية', startTime: '17:00', endTime: '01:00', gracePeriodMinutes: 15 },
 ];
 
-
 interface Data {
   employees: Employee[];
   attendanceRecords: AttendanceRecord[];
   leaveRequests: LeaveRequest[];
   shifts: Shift[];
+  // payrollRecords are stored within each employee's payrollHistory
 }
 
 const defaultData: Data = {
-  employees: mockEmployees,
+  employees: mockEmployees.map(emp => ({ // Ensure mock employees have new payroll fields
+    ...emp,
+    baseSalary: emp.baseSalary || 0,
+    allowances: emp.allowances || [],
+    deductions: emp.deductions || [],
+    payrollHistory: emp.payrollHistory || [],
+  })),
   attendanceRecords: mockAttendance,
   leaveRequests: mockLeaveRequests,
-  shifts: initialShifts, // Using a local initialShifts or import from constants if available
+  shifts: initialShifts,
 };
 
-let dbInstance: any; // Low<Data> type is tricky with JSONFilePreset initialization timing
+let dbInstance: any;
 
 export async function getDb() {
   if (!dbInstance) {
-    // Use JSONFilePreset for simpler setup
-    // It handles initial read and provides `db.data` and `db.write()`
     const db = await JSONFilePreset<Data>('src/lib/db.json', defaultData);
-    
-    // Perform an explicit read to load data from file if it exists
     await db.read();
 
-    // Ensure default data is written if the file was empty or collections are missing
-    // JSONFilePreset initializes with defaultData if file doesn't exist or is empty.
-    // We can add a check if specific collections are empty and seed them.
-    if (!db.data || !db.data.employees || db.data.employees.length === 0) {
-      db.data = { ...defaultData, ...db.data }; // Merge to preserve other potential data
-      db.data.employees = mockEmployees; // Ensure employees are seeded
+    let needsWrite = false;
+
+    if (!db.data) {
+      db.data = { ...defaultData };
+      needsWrite = true;
     }
+
+    if (!db.data.employees || db.data.employees.length === 0) {
+      db.data.employees = defaultData.employees;
+      needsWrite = true;
+    } else {
+      // Ensure existing employees have the new payroll fields
+      db.data.employees = db.data.employees.map(emp => ({
+        ...emp,
+        baseSalary: emp.baseSalary === undefined ? 0 : emp.baseSalary, // default to 0 if undefined
+        allowances: emp.allowances || [],
+        deductions: emp.deductions || [],
+        payrollHistory: emp.payrollHistory || [],
+      }));
+      // This check might be complex if only some employees are missing fields.
+      // A simple check: if the first employee doesn't have baseSalary (might not be robust)
+      if (db.data.employees.length > 0 && db.data.employees[0].baseSalary === undefined) {
+        needsWrite = true; // Signal that migration/defaulting happened.
+      }
+    }
+
     if (!db.data.attendanceRecords || db.data.attendanceRecords.length === 0) {
-      db.data.attendanceRecords = mockAttendance;
+      db.data.attendanceRecords = defaultData.attendanceRecords;
+      needsWrite = true;
     }
     if (!db.data.leaveRequests || db.data.leaveRequests.length === 0) {
-      db.data.leaveRequests = mockLeaveRequests;
+      db.data.leaveRequests = defaultData.leaveRequests;
+      needsWrite = true;
     }
-     if (!db.data.shifts || db.data.shifts.length === 0) {
-      db.data.shifts = initialShifts; // Or your mockShifts from constants
+    if (!db.data.shifts || db.data.shifts.length === 0) {
+      db.data.shifts = defaultData.shifts;
+      needsWrite = true;
     }
-    await db.write();
+
+    if (needsWrite) {
+      await db.write();
+    }
     dbInstance = db;
   }
   return dbInstance;

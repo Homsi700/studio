@@ -1,6 +1,6 @@
 
 import type { LucideIcon } from 'lucide-react';
-import { LayoutDashboard, Users, CalendarDays, Briefcase, Settings, Lightbulb, GanttChartSquare, Fingerprint } from 'lucide-react';
+import { LayoutDashboard, Users, CalendarDays, Briefcase, Settings, Lightbulb, GanttChartSquare, Fingerprint, Wallet } from 'lucide-react';
 
 export interface NavItem {
   href: string;
@@ -15,10 +15,43 @@ export const navItems: NavItem[] = [
   { href: '/attendance', label: 'سجلات الحضور', icon: CalendarDays, tooltip: 'Attendance' },
   { href: '/leaves', label: 'إدارة الإجازات', icon: Briefcase, tooltip: 'Leaves' },
   { href: '/shifts', label: 'إدارة الورديات', icon: GanttChartSquare, tooltip: 'Shifts' },
+  { href: '/payroll', label: 'إدارة الرواتب', icon: Wallet, tooltip: 'Payroll' },
   { href: '/insights', label: 'تحليلات الحضور', icon: Lightbulb, tooltip: 'Insights' },
   { href: '/checkin-checkout', label: 'تسجيل الدخول/الخروج', icon: Fingerprint, tooltip: 'Check-in/Out' },
   { href: '/settings', label: 'الإعدادات', icon: Settings, tooltip: 'Settings' },
 ];
+
+export interface Allowance {
+  id: string;
+  name: string;
+  amount: number;
+}
+
+export interface Deduction {
+  id: string;
+  name: string;
+  amount: number;
+}
+
+export interface PayrollRecord {
+  id: string;
+  month: number; // 1-12
+  year: number;
+  grossSalary: number;
+  totalAllowances: number;
+  totalDeductions: number; // Includes fixed deductions and situational (lates/absences)
+  netSalary: number;
+  calculationDate: string; // ISO date string
+  attendanceSummary: {
+    totalWorkingHours?: number; // Optional for now
+    totalLateMinutes?: number;
+    totalAbsentDays?: number;
+    daysInMonth?: number;
+    workingDaysInMonth?: number; // Based on configuration or standard
+    actualWorkedDays?: number;
+  };
+  notes?: string;
+}
 
 export interface Employee {
   id: string;
@@ -28,7 +61,11 @@ export interface Employee {
   email: string;
   phone: string;
   avatarUrl?: string;
-  hashedPin?: string; // For storing the hashed PIN
+  hashedPin?: string;
+  baseSalary?: number;
+  allowances?: Allowance[];
+  deductions?: Deduction[]; // Default/recurring deductions
+  payrollHistory?: PayrollRecord[];
 }
 
 export interface AttendanceRecord {
@@ -39,7 +76,7 @@ export interface AttendanceRecord {
   clockIn: string; // HH:MM
   clockOut: string | null; // HH:MM or null if still clocked in
   totalDuration: string | null; // "X hours Y minutes" or null
-  status: 'onTime' | 'late' | 'earlyLeave' | 'absent' | 'onDuty'; // 'onDuty' for currently clocked in
+  status: 'onTime' | 'late' | 'earlyLeave' | 'absent' | 'onDuty';
 }
 
 export type LeaveRequestStatus = 'pending' | 'approved' | 'rejected';
@@ -54,11 +91,20 @@ export interface LeaveRequest {
   status: LeaveRequestStatus;
 }
 
-// Mock data is kept for reference or fallback, but app will primarily use db.json
+// Mock data - ensure payroll fields are optional or have defaults
 export const mockEmployees: Employee[] = [
-  { id: '1', name: 'أحمد محمود', department: 'التكنولوجيا', jobTitle: 'مهندس برمجيات', email: 'ahmad.m@example.com', phone: '0912345678', avatarUrl: 'https://placehold.co/100x100.png' },
-  { id: '2', name: 'فاطمة علي', department: 'الموارد البشرية', jobTitle: 'مسؤول موارد بشرية', email: 'fatima.a@example.com', phone: '0987654321', avatarUrl: 'https://placehold.co/100x100.png' },
-  { id: '3', name: 'خالد وليد', department: 'التسويق', jobTitle: 'أخصائي تسويق', email: 'khaled.w@example.com', phone: '0911223344', avatarUrl: 'https://placehold.co/100x100.png' },
+  { 
+    id: '1', name: 'أحمد محمود', department: 'التكنولوجيا', jobTitle: 'مهندس برمجيات', email: 'ahmad.m@example.com', phone: '0912345678', avatarUrl: 'https://placehold.co/100x100.png',
+    baseSalary: 0, allowances: [], deductions: [], payrollHistory: []
+  },
+  { 
+    id: '2', name: 'فاطمة علي', department: 'الموارد البشرية', jobTitle: 'مسؤول موارد بشرية', email: 'fatima.a@example.com', phone: '0987654321', avatarUrl: 'https://placehold.co/100x100.png',
+    baseSalary: 0, allowances: [], deductions: [], payrollHistory: []
+  },
+  { 
+    id: '3', name: 'خالد وليد', department: 'التسويق', jobTitle: 'أخصائي تسويق', email: 'khaled.w@example.com', phone: '0911223344', avatarUrl: 'https://placehold.co/100x100.png',
+    baseSalary: 0, allowances: [], deductions: [], payrollHistory: []
+  },
 ];
 
 export const mockAttendance: AttendanceRecord[] = [

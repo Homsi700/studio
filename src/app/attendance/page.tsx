@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -17,7 +18,8 @@ export default function AttendancePage() {
 
   const filteredRecords = attendanceRecords.filter(record => {
     const dateMatch = dateFilter ? record.date.includes(dateFilter) : true;
-    const employeeMatch = employeeFilter ? record.employeeId === employeeFilter : true;
+    // If employeeFilter is empty (initial state, placeholder shown) or "all", show all. Otherwise, filter by ID.
+    const employeeMatch = !employeeFilter || employeeFilter === "all" ? true : record.employeeId === employeeFilter;
     return dateMatch && employeeMatch;
   });
 
@@ -51,7 +53,7 @@ export default function AttendancePage() {
                   <SelectValue placeholder="اختر الموظف" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="" className="font-body">الكل</SelectItem>
+                  <SelectItem value="all" className="font-body">الكل</SelectItem>
                   {mockEmployees.map(emp => (
                     <SelectItem key={emp.id} value={emp.id} className="font-body">{emp.name}</SelectItem>
                   ))}

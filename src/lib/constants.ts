@@ -77,6 +77,8 @@ export interface AttendanceRecord {
   clockOut: string | null; // HH:MM or null if still clocked in
   totalDuration: string | null; // "X hours Y minutes" or null
   status: 'onTime' | 'late' | 'earlyLeave' | 'absent' | 'onDuty';
+  method?: 'PIN' | 'Fingerprint' | 'Manual'; // Added method
+  deviceId?: string; // Added deviceId
 }
 
 export type LeaveRequestStatus = 'pending' | 'approved' | 'rejected';
@@ -90,6 +92,34 @@ export interface LeaveRequest {
   reason: string;
   status: LeaveRequestStatus;
 }
+
+export interface Shift {
+  id: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  gracePeriodMinutes: number;
+}
+
+// New interface for raw attendance events from external sources (e.g., fingerprint)
+export interface RawAttendanceEvent {
+  id: string;
+  employeeId: string;
+  timestamp: string; // ISO Date string for the event
+  type: 'clockIn' | 'clockOut' | 'unknown'; // The type of event
+  method: 'Fingerprint' | 'OtherExternal'; // Method of recording
+  deviceId?: string; // Optional device ID
+}
+
+// Interface for the data expected by the recordExternalAttendance Server Action
+export interface ExternalAttendanceData {
+  employeeId: string;
+  timestamp: string; // ISO string or a string that can be parsed to a Date
+  eventType: 'clockIn' | 'clockOut' | 'unknown';
+  deviceSecret: string;
+  deviceId?: string;
+}
+
 
 // Mock data - ensure payroll fields are optional or have defaults
 export const mockEmployees: Employee[] = [
@@ -108,12 +138,14 @@ export const mockEmployees: Employee[] = [
 ];
 
 export const mockAttendance: AttendanceRecord[] = [
-  { id: 'att1', employeeId: '1', employeeName: 'أحمد محمود', date: '2024-07-28', clockIn: '09:00', clockOut: '17:00', totalDuration: '8 ساعات', status: 'onTime' },
-  { id: 'att2', employeeId: '2', employeeName: 'فاطمة علي', date: '2024-07-28', clockIn: '09:15', clockOut: '17:00', totalDuration: '7 ساعات 45 دقيقة', status: 'late' },
-  { id: 'att3', employeeId: '1', employeeName: 'أحمد محمود', date: '2024-07-27', clockIn: '08:55', clockOut: '16:30', totalDuration: '7 ساعات 35 دقيقة', status: 'earlyLeave' },
+  { id: 'att1', employeeId: '1', employeeName: 'أحمد محمود', date: '2024-07-28', clockIn: '09:00', clockOut: '17:00', totalDuration: '8 ساعات', status: 'onTime', method: 'PIN' },
+  { id: 'att2', employeeId: '2', employeeName: 'فاطمة علي', date: '2024-07-28', clockIn: '09:15', clockOut: '17:00', totalDuration: '7 ساعات 45 دقيقة', status: 'late', method: 'PIN' },
+  { id: 'att3', employeeId: '1', employeeName: 'أحمد محمود', date: '2024-07-27', clockIn: '08:55', clockOut: '16:30', totalDuration: '7 ساعات 35 دقيقة', status: 'earlyLeave', method: 'PIN' },
 ];
 
 export const mockLeaveRequests: LeaveRequest[] = [
   { id: 'leave1', employeeId: '3', employeeName: 'خالد وليد', startDate: '2024-08-01', endDate: '2024-08-05', reason: 'إجازة سنوية', status: 'pending' },
   { id: 'leave2', employeeId: '1', employeeName: 'أحمد محمود', startDate: '2024-07-29', endDate: '2024-07-29', reason: 'موعد طبي', status: 'approved' },
 ];
+
+export const mockRawAttendanceEvents: RawAttendanceEvent[] = []; // Start with no raw events

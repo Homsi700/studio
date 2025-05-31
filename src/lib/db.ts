@@ -1,7 +1,7 @@
 
 import { JSONFilePreset } from 'lowdb/node';
-import type { Employee, AttendanceRecord, LeaveRequest, Shift, PayrollRecord, Allowance, Deduction } from './constants'; // Added PayrollRecord, Allowance, Deduction
-import { mockEmployees, mockAttendance, mockLeaveRequests } from './constants';
+import type { Employee, AttendanceRecord, LeaveRequest, Shift, RawAttendanceEvent } from './constants';
+import { mockEmployees, mockAttendance, mockLeaveRequests, mockRawAttendanceEvents } from './constants';
 
 const initialShifts: Shift[] = [
   { id: '1', name: 'الوردية الصباحية', startTime: '09:00', endTime: '17:00', gracePeriodMinutes: 15 },
@@ -13,20 +13,24 @@ interface Data {
   attendanceRecords: AttendanceRecord[];
   leaveRequests: LeaveRequest[];
   shifts: Shift[];
-  // payrollRecords are stored within each employee's payrollHistory
+  rawAttendanceEvents: RawAttendanceEvent[]; // New collection for raw events
 }
 
 const defaultData: Data = {
-  employees: mockEmployees.map(emp => ({ // Ensure mock employees have new payroll fields
+  employees: mockEmployees.map(emp => ({
     ...emp,
     baseSalary: emp.baseSalary || 0,
     allowances: emp.allowances || [],
     deductions: emp.deductions || [],
     payrollHistory: emp.payrollHistory || [],
   })),
-  attendanceRecords: mockAttendance,
+  attendanceRecords: mockAttendance.map(rec => ({ // ensure mock records have method
+    ...rec,
+    method: rec.method || 'Manual' // Default to Manual if not specified
+  })),
   leaveRequests: mockLeaveRequests,
   shifts: initialShifts,
+  rawAttendanceEvents: mockRawAttendanceEvents, // Initialize with empty array
 };
 
 let dbInstance: any;
@@ -43,29 +47,38 @@ export async function getDb() {
       needsWrite = true;
     }
 
+    // Ensure employees have new payroll fields
     if (!db.data.employees || db.data.employees.length === 0) {
       db.data.employees = defaultData.employees;
       needsWrite = true;
     } else {
-      // Ensure existing employees have the new payroll fields
       db.data.employees = db.data.employees.map(emp => ({
         ...emp,
-        baseSalary: emp.baseSalary === undefined ? 0 : emp.baseSalary, // default to 0 if undefined
+        baseSalary: emp.baseSalary === undefined ? 0 : emp.baseSalary,
         allowances: emp.allowances || [],
         deductions: emp.deductions || [],
         payrollHistory: emp.payrollHistory || [],
       }));
-      // This check might be complex if only some employees are missing fields.
-      // A simple check: if the first employee doesn't have baseSalary (might not be robust)
       if (db.data.employees.length > 0 && db.data.employees[0].baseSalary === undefined) {
-        needsWrite = true; // Signal that migration/defaulting happened.
+        needsWrite = true;
       }
     }
-
-    if (!db.data.attendanceRecords || db.data.attendanceRecords.length === 0) {
-      db.data.attendanceRecords = defaultData.attendanceRecords;
-      needsWrite = true;
+    
+    // Ensure attendanceRecords have method field
+    if (!db.data.attendanceRecords) {
+        db.data.attendanceRecords = defaultData.attendanceRecords;
+        needsWrite = true;
+    } else {
+        db.data.attendanceRecords = db.data.attendanceRecords.map(rec => ({
+            ...rec,
+            method: rec.method || 'Manual' // Default if missing
+        }));
+        if (db.data.attendanceRecords.length > 0 && db.data.attendanceRecords[0].method === undefined) {
+            needsWrite = true;
+        }
     }
+
+
     if (!db.data.leaveRequests || db.data.leaveRequests.length === 0) {
       db.data.leaveRequests = defaultData.leaveRequests;
       needsWrite = true;
@@ -74,6 +87,11 @@ export async function getDb() {
       db.data.shifts = defaultData.shifts;
       needsWrite = true;
     }
+    if (!db.data.rawAttendanceEvents) { // Check for the new collection
+      db.data.rawAttendanceEvents = defaultData.rawAttendanceEvents;
+      needsWrite = true;
+    }
+
 
     if (needsWrite) {
       await db.write();
